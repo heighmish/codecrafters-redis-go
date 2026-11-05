@@ -115,7 +115,7 @@ func handleConnection(conn net.Conn) {
 			for i, resp := range arr[1:] {
 				echo[i] = resp.ToBulkString()
 			}
-			conn.Write(strings.Join(echo, "\r\n"))
+			conn.Write([]byte(strings.Join(echo, "\r\n")))
 		default:
 			fmt.Println("Unknown command: ", command)
 			continue
