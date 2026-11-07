@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -18,8 +21,9 @@ const (
 )
 
 type Resp struct {
-	Type Type
-	Data []byte
+	T      Type
+	Data   []byte
+	Length int
 }
 
 func main() {
@@ -30,6 +34,7 @@ func main() {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
+	defer l.Close()
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -40,86 +45,138 @@ func main() {
 	}
 }
 
-func getType(s string) Type {
-	switch s[0] {
-	case Bulk:
-		return Bulk
-	case Integer:
-		return Integer
-	case String:
-		return String
-	case Array:
-		return Array
-	case Error:
-		return Error
-	default:
-		fmt.Println("Unknown type: ", s[0])
-		panic("Unknown type")
-	}
-}
-
-func parseInteger(s string) Resp {
-	return Resp{
-		Type: Integer,
-		Data: []byte(s[1:]),
-	}
-}
-
-func parseBulkString(_ string, val string) Resp {
-	return Resp{
-		Type: Bulk,
-		Data: []byte(val),
-	}
-}
-
 func (r *Resp) ToBulkString() string {
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(r.Data), r.Data)
 }
 
-func handleConnection(conn net.Conn) {
-	buf := make([]byte, 512)
-	for {
-		_, err := conn.Read(buf)
+type Parser struct {
+	reader *bufio.Reader
+}
+
+func NewParser(io io.Reader) Parser {
+	return Parser{
+		reader: bufio.NewReader(io),
+	}
+}
+
+func (parser *Parser) ReadLine() (string, error) {
+	line, err := parser.reader.ReadString('\n')
+	if err != nil {
+		fmt.Println("Failed to read: ", err)
+		return "", err
+	}
+	return strings.TrimSuffix(line, "\r\n"), nil
+}
+
+func (parser *Parser) ReadInt() (int, error) {
+	line, err := parser.ReadLine()
+	if err != nil {
+		return 0, err
+	}
+	value, err := strconv.Atoi(line)
+	if err != nil {
+		fmt.Println("[ReadInt] Error parsing: ", line)
+		return 0, err
+	}
+	return value, nil
+}
+
+func (parser *Parser) ReadResp() (Resp, error) {
+	t, err := parser.reader.ReadByte()
+	if err != nil {
+		fmt.Println("Error parsing type: ", err)
+		return Resp{}, err
+	}
+	//fmt.Printf("Byte: %q | Hex: 0x%02X\n", t, t)
+	switch t {
+	case Integer:
+		fmt.Println("Integer: ", string(t))
+		line, err := parser.ReadLine()
 		if err != nil {
-			fmt.Println("Error reading from connection: ", err.Error())
-			conn.Close()
+			return Resp{}, err
+		}
+		return Resp{T: Integer, Data: []byte(line)}, nil
+	case Bulk:
+		fmt.Println("BulkString: ", string(t))
+		strLength, err := parser.ReadInt()
+		if err != nil {
+			return Resp{}, err
+		}
+
+		bulkString := make([]byte, strLength)
+		_, err = io.ReadFull(parser.reader, bulkString)
+		if err != nil {
+			return Resp{}, err
+		}
+		// Consume trailing \r\n
+		parser.ReadLine()
+
+		return Resp{T: Bulk, Data: []byte(bulkString)}, nil
+	case Array:
+		fmt.Println("Array: ", string(t))
+		length, err := parser.ReadInt()
+		if err != nil {
+			panic("Array length is fake")
+		}
+		return Resp{T: Array, Length: length}, nil
+	case Error:
+		parser.ReadLine()
+		return Resp{T: Error}, nil
+	case String:
+		fmt.Println("Simple string: ", string(t))
+		line, err := parser.ReadLine()
+		if err != nil {
+			return Resp{}, err
+		}
+		return Resp{T: String, Data: []byte(line)}, nil
+	default:
+		fmt.Println("Unknown Type: ", string(t))
+		return Resp{}, err
+	}
+}
+
+func handleConnection(conn net.Conn) {
+	defer conn.Close()
+	parser := NewParser(conn)
+	for {
+		fmt.Println("Waiting for next command...")
+		value, err := parser.ReadResp()
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println("Connection closed...")
+				return
+			}
+
+			fmt.Printf("Error reading RESP: %v", err)
 			return
 		}
+
+		fmt.Println("Successfully received next command!")
 		/* *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
 		 * = [*2, $4, ECHO, $3, hey]
 		 */
-		commands := strings.Split(string(buf), "\r\n")
-		arr := make([]Resp, 0)
-		for i := 0; i < len(commands); {
-			respType := getType(commands[i])
-			var resp Resp
-			switch respType {
-			case Integer:
-				resp = parseInteger(commands[i])
-				i += 1
-			case String:
-				resp = parseBulkString(commands[i], commands[i+1])
-				i += 2
+		fmt.Printf("Received resp: Type: %s, val: %s, length: %d\r\n", string(value.T), string(value.Data), value.Length)
+		if value.T == Array && value.Length > 0 {
+			commandArray := make([]Resp, value.Length)
+			for i := range value.Length {
+				value, err := parser.ReadResp()
+				if err != nil {
+					fmt.Printf("Error reading RESP: %v", err)
+					return
+				}
+				commandArray[i] = value
+			}
+			command := strings.ToUpper(string(commandArray[0].Data))
+			fmt.Println("Processing command: ", command)
+			switch command {
+			case "PING":
+				conn.Write([]byte("+PONG\r\n"))
+			case "ECHO":
+				conn.Write([]byte(commandArray[1].ToBulkString()))
 			default:
-				i += 1
+				fmt.Println("Unknown command: ", command)
+				conn.Write([]byte("-ERR unknown command\r\n"))
 			}
-			arr = append(arr, resp)
 		}
-
-		command := arr[0]
-		switch strings.ToLower(string(command.Data)) {
-		case "ping":
-			conn.Write([]byte("+PONG\r\n"))
-		case "echo":
-			echo := make([]string, len(arr[1:]))
-			for i, resp := range arr[1:] {
-				echo[i] = resp.ToBulkString()
-			}
-			conn.Write([]byte(strings.Join(echo, "\r\n")))
-		default:
-			fmt.Println("Unknown command: ", command)
-			continue
-		}
-
 	}
 }
