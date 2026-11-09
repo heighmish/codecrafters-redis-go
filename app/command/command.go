@@ -41,7 +41,7 @@ func ExecuteCommand(c *Command, s map[string]string) []byte {
 		}
 		s[c.Args[0].Data] = c.Args[1].Data
 
-		return []byte("+OK")
+		return []byte("+OK\r\n")
 	case "GET":
 		if len(c.Args) < 1 {
 			return []byte("-ERR Usage: GET <key>\r\n")
