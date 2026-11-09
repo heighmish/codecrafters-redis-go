@@ -24,17 +24,36 @@ func NewCommand(arr []*resp.Resp) *Command {
 	}
 }
 
-func ExecuteCommand(c *Command) []byte {
+func ExecuteCommand(c *Command, s map[string]string) []byte {
 	fmt.Println("Processing command: ", c.Name)
 	switch c.Name {
 	case "PING":
 		return ([]byte("+PONG\r\n"))
 	case "ECHO":
 		if len(c.Args) < 1 {
-			return []byte("-ERR Usage: echo <arg>\r\n")
+			return []byte("-ERR Usage: ECHO <arg>\r\n")
 		}
 
 		return ([]byte(c.Args[0].ToBulkString()))
+	case "SET":
+		if len(c.Args) < 2 {
+			return []byte("-ERR Usage: SET <key> <value>\r\n")
+		}
+		s[c.Args[0].Data] = c.Args[1].Data
+
+		return []byte("+OK")
+	case "GET":
+		if len(c.Args) < 1 {
+			return []byte("-ERR Usage: GET <key>\r\n")
+		}
+
+		val, ok := s[c.Args[0].Data]
+		if !ok {
+			return []byte("-1\r\n")
+		}
+
+		return []byte(resp.ToBulkString(val))
+
 	default:
 		fmt.Println("Unknown command: ", c.Name)
 		return ([]byte("-ERR unknown command\r\n"))

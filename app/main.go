@@ -31,6 +31,7 @@ func main() {
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 	parser := parser.NewParser(conn)
+	storage := make(map[string]string)
 	for {
 		fmt.Println("Waiting for next command...")
 		value, err := parser.ReadResp()
@@ -49,6 +50,6 @@ func handleConnection(conn net.Conn) {
 		 * = [*2, $4, ECHO, $3, hey]
 		 */
 		c := command.NewCommand(value.Elements)
-		conn.Write(command.ExecuteCommand(c))
+		conn.Write(command.ExecuteCommand(c, storage))
 	}
 }
