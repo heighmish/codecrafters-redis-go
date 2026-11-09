@@ -13,9 +13,10 @@ const (
 )
 
 type Resp struct {
-	T      Type
-	Data   []byte
-	Length int
+	T        Type
+	Data     string
+	Elements []*Resp
+	Integer  int
 }
 
 func (r *Resp) ToBulkString() string {

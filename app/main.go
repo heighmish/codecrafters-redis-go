@@ -7,7 +7,6 @@ import (
 	"os"
 	"redis-go/app/command"
 	"redis-go/app/parser"
-	"redis-go/app/resp"
 )
 
 func main() {
@@ -49,19 +48,7 @@ func handleConnection(conn net.Conn) {
 		/* *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
 		 * = [*2, $4, ECHO, $3, hey]
 		 */
-		fmt.Printf("Received resp: Type: %s, val: %s, length: %d\r\n", string(value.T), string(value.Data), value.Length)
-		if value.T == resp.Array && value.Length > 0 {
-			respArray := make([]resp.Resp, value.Length)
-			for i := range value.Length {
-				value, err := parser.ReadResp()
-				if err != nil {
-					fmt.Printf("Error reading RESP: %v", err)
-					return
-				}
-				respArray[i] = value
-			}
-			c := command.NewCommand(respArray)
-			conn.Write(command.ExecuteCommand(c))
-		}
+		c := command.NewCommand(value.Elements)
+		conn.Write(command.ExecuteCommand(c))
 	}
 }

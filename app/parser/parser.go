@@ -28,19 +28,6 @@ func (parser *Parser) ReadLine() (string, error) {
 	return strings.TrimSuffix(line, "\r\n"), nil
 }
 
-func (parser *Parser) ReadInt() (int, error) {
-	line, err := parser.ReadLine()
-	if err != nil {
-		return 0, err
-	}
-	value, err := strconv.Atoi(line)
-	if err != nil {
-		fmt.Println("[ReadInt] Error parsing: ", line)
-		return 0, err
-	}
-	return value, nil
-}
-
 func (parser *Parser) ReadResp() (resp.Resp, error) {
 	t, err := parser.reader.ReadByte()
 	if err != nil {
@@ -70,17 +57,22 @@ func (p *Parser) parseInt() (resp.Resp, error) {
 	if err != nil {
 		return resp.Resp{}, err
 	}
-	return resp.Resp{T: resp.Integer, Data: []byte(line)}, nil
+	value, err := strconv.Atoi(line)
+	if err != nil {
+		fmt.Println("[ParseInt] Error parsing: ", line)
+		return resp.Resp{}, err
+	}
+	return resp.Resp{T: resp.Integer, Integer: value}, nil
 
 }
 
 func (p *Parser) parseBulkString() (resp.Resp, error) {
-	strLength, err := p.ReadInt()
+	val, err := p.parseInt()
 	if err != nil {
 		return resp.Resp{}, err
 	}
 
-	bulkString := make([]byte, strLength)
+	bulkString := make([]byte, val.Integer)
 	_, err = io.ReadFull(p.reader, bulkString)
 	if err != nil {
 		return resp.Resp{}, err
@@ -88,15 +80,24 @@ func (p *Parser) parseBulkString() (resp.Resp, error) {
 	// Consume trailing \r\n
 	p.ReadLine()
 
-	return resp.Resp{T: resp.Bulk, Data: []byte(bulkString)}, nil
+	return resp.Resp{T: resp.Bulk, Data: string(bulkString)}, nil
 }
 
 func (p *Parser) parseArray() (resp.Resp, error) {
-	length, err := p.ReadInt()
+	length, err := p.parseInt()
 	if err != nil {
 		return resp.Resp{}, err
 	}
-	return resp.Resp{T: resp.Array, Length: length}, nil
+	elements := make([]*resp.Resp, length.Integer)
+	for i := range length.Integer {
+		value, err := p.ReadResp()
+		if err != nil {
+			fmt.Printf("Error reading RESP: %v", err)
+			return resp.Resp{}, err
+		}
+		elements[i] = &value
+	}
+	return resp.Resp{T: resp.Array, Elements: elements}, nil
 }
 
 func (p *Parser) parseError() (resp.Resp, error) {
@@ -109,5 +110,5 @@ func (p *Parser) parseString() (resp.Resp, error) {
 	if err != nil {
 		return resp.Resp{}, err
 	}
-	return resp.Resp{T: resp.String, Data: []byte(line)}, nil
+	return resp.Resp{T: resp.String, Data: line}, nil
 }
