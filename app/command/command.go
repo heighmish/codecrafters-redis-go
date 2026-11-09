@@ -28,7 +28,7 @@ func ExecuteCommand(c *Command, s map[string]string) []byte {
 	fmt.Println("Processing command: ", c.Name)
 	switch c.Name {
 	case "PING":
-		return ([]byte("+PONG\r\n"))
+		return []byte(resp.ToSimpleString("PONG"))
 	case "ECHO":
 		if len(c.Args) < 1 {
 			return []byte("-ERR Usage: ECHO <arg>\r\n")
@@ -41,15 +41,15 @@ func ExecuteCommand(c *Command, s map[string]string) []byte {
 		}
 		s[c.Args[0].Data] = c.Args[1].Data
 
-		return []byte("+OK\r\n")
+		return []byte(resp.ToSimpleString("OK"))
 	case "GET":
 		if len(c.Args) < 1 {
-			return []byte("-ERR Usage: GET <key>\r\n")
+			return []byte(resp.ToError("Usage: GET <key>"))
 		}
 
 		val, ok := s[c.Args[0].Data]
 		if !ok {
-			return []byte("-1\r\n")
+			return []byte(resp.ToBulkString(""))
 		}
 
 		return []byte(resp.ToBulkString(val))

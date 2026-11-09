@@ -32,3 +32,11 @@ func ToBulkString(s string) string {
 	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
 }
+
+func ToSimpleString(s string) string {
+	return fmt.Sprintf("+%v\r\n", s)
+}
+
+func ToError(s string) string {
+	return fmt.Sprintf("-ERR %s\r\n", s)
+}
