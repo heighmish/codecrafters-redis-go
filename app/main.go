@@ -60,17 +60,8 @@ func handleConnection(conn net.Conn) {
 				}
 				respArray[i] = value
 			}
-			command := command.NewCommand(respArray)
-			fmt.Println("Processing command: ", command.Word)
-			switch command.Word {
-			case "PING":
-				conn.Write([]byte("+PONG\r\n"))
-			case "ECHO":
-				conn.Write([]byte(command.Args[0].ToBulkString()))
-			default:
-				fmt.Println("Unknown command: ", command)
-				conn.Write([]byte("-ERR unknown command\r\n"))
-			}
+			c := command.NewCommand(respArray)
+			conn.Write(command.ExecuteCommand(c))
 		}
 	}
 }
