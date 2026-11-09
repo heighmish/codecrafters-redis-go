@@ -61,10 +61,6 @@ func handleConnection(conn net.Conn) {
 				respArray[i] = value
 			}
 			command := command.NewCommand(respArray)
-			if command == nil {
-				fmt.Print("Unable to parse command")
-				continue
-			}
 			fmt.Println("Processing command: ", command.Word)
 			switch command.Word {
 			case "PING":

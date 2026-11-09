@@ -12,7 +12,10 @@ type Command struct {
 
 func NewCommand(arr []resp.Resp) *Command {
 	if len(arr) > 1 {
-		return nil
+		return &Command{
+			Word: "ERR",
+			Args: make([]resp.Resp, 0),
+		}
 	}
 	return &Command{
 		Word: strings.ToUpper(string(arr[0].Data)),
