@@ -5,9 +5,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"redis-go/app/command"
 	"redis-go/app/parser"
 	"redis-go/app/resp"
-	"strings"
 )
 
 func main() {
@@ -51,22 +51,26 @@ func handleConnection(conn net.Conn) {
 		 */
 		fmt.Printf("Received resp: Type: %s, val: %s, length: %d\r\n", string(value.T), string(value.Data), value.Length)
 		if value.T == resp.Array && value.Length > 0 {
-			commandArray := make([]resp.Resp, value.Length)
+			respArray := make([]resp.Resp, value.Length)
 			for i := range value.Length {
 				value, err := parser.ReadResp()
 				if err != nil {
 					fmt.Printf("Error reading RESP: %v", err)
 					return
 				}
-				commandArray[i] = value
+				respArray[i] = value
 			}
-			command := strings.ToUpper(string(commandArray[0].Data))
-			fmt.Println("Processing command: ", command)
-			switch command {
+			command := command.NewCommand(respArray)
+			if command == nil {
+				fmt.Print("Unable to parse command")
+				continue
+			}
+			fmt.Println("Processing command: ", command.Word)
+			switch command.Word {
 			case "PING":
 				conn.Write([]byte("+PONG\r\n"))
 			case "ECHO":
-				conn.Write([]byte(commandArray[1].ToBulkString()))
+				conn.Write([]byte(command.Args[0].ToBulkString()))
 			default:
 				fmt.Println("Unknown command: ", command)
 				conn.Write([]byte("-ERR unknown command\r\n"))
