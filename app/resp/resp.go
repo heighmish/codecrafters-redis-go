@@ -28,7 +28,7 @@ func (r *Resp) ToBulkString() string {
 
 func ToBulkString(s string) string {
 	if s == "" {
-		return "-1\r\n"
+		return "$-1\r\n"
 	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
 }
