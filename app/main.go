@@ -7,6 +7,7 @@ import (
 	"os"
 	"redis-go/app/command"
 	"redis-go/app/parser"
+	"redis-go/app/storage"
 )
 
 func main() {
@@ -31,7 +32,7 @@ func main() {
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 	parser := parser.NewParser(conn)
-	storage := make(map[string]string)
+	storage := make(storage.Storage)
 	for {
 		fmt.Println("Waiting for next command...")
 		value, err := parser.ReadResp()
@@ -46,9 +47,6 @@ func handleConnection(conn net.Conn) {
 		}
 
 		fmt.Println("Successfully received next command!")
-		/* *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
-		 * = [*2, $4, ECHO, $3, hey]
-		 */
 		c := command.NewCommand(value.Elements)
 		conn.Write(command.ExecuteCommand(c, storage))
 	}

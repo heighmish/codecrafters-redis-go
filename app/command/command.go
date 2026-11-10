@@ -3,7 +3,10 @@ package command
 import (
 	"fmt"
 	"redis-go/app/resp"
+	"redis-go/app/storage"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Command struct {
@@ -24,7 +27,7 @@ func NewCommand(arr []*resp.Resp) *Command {
 	}
 }
 
-func ExecuteCommand(c *Command, s map[string]string) []byte {
+func ExecuteCommand(c *Command, s storage.Storage) []byte {
 	fmt.Println("Processing command: ", c.Name)
 	switch c.Name {
 	case "PING":
@@ -39,20 +42,46 @@ func ExecuteCommand(c *Command, s map[string]string) []byte {
 		if len(c.Args) < 2 {
 			return []byte("-ERR Usage: SET <key> <value>\r\n")
 		}
-		s[c.Args[0].Data] = c.Args[1].Data
+
+		key := c.Args[0].Data
+
+		if len(c.Args) == 4 {
+			opt := c.Args[2]
+			if strings.ToUpper(opt.Data) == "PX" {
+				expiry, err := strconv.Atoi(c.Args[3].Data)
+				if err != nil {
+					return []byte("-ERR Usage: SET <key> <value> <px> <expiryInMilliseconds>\r\n")
+				}
+				expiryTime := time.Now().UTC().Add(time.Duration(expiry) * time.Millisecond)
+				s[key] = storage.NewValueWithExpiry(*c.Args[1], &expiryTime)
+				fmt.Printf("Adding key %v with expiry time %v\r\n", key, expiryTime)
+				return []byte(resp.ToSimpleString("OK"))
+			}
+		}
+		s[key] = storage.NewValue(*c.Args[1])
 
 		return []byte(resp.ToSimpleString("OK"))
 	case "GET":
 		if len(c.Args) < 1 {
 			return []byte(resp.ToError("Usage: GET <key>"))
 		}
+		key := c.Args[0].Data
 
-		val, ok := s[c.Args[0].Data]
+		val, ok := s[key]
 		if !ok {
+			fmt.Printf("Key %v not found\r\n", key)
 			return []byte(resp.ToBulkString(""))
 		}
 
-		return []byte(resp.ToBulkString(val))
+		if val.ExpiryTime != nil {
+			if time.Now().UTC().Compare(*val.ExpiryTime) > 0 {
+				fmt.Printf("Key %s expired\r\n", key)
+				delete(s, key)
+				return []byte(resp.ToBulkString(""))
+			}
+		}
+
+		return []byte(resp.ToBulkString(val.Data))
 
 	default:
 		fmt.Println("Unknown command: ", c.Name)

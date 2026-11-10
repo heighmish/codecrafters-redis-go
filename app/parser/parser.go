@@ -34,7 +34,7 @@ func (parser *Parser) ReadResp() (resp.Resp, error) {
 		fmt.Println("Error parsing type: ", err)
 		return resp.Resp{}, err
 	}
-	fmt.Printf("Byte: %q | Hex: 0x%02X\n", t, t)
+	//fmt.Printf("Byte: %q | Hex: 0x%02X\n", t, t)
 	switch t {
 	case resp.Integer:
 		return parser.parseInt()
@@ -48,7 +48,7 @@ func (parser *Parser) ReadResp() (resp.Resp, error) {
 		return parser.parseString()
 	default:
 		fmt.Println("Unknown Type: ", string(t))
-		return resp.Resp{}, err
+		return resp.Resp{}, fmt.Errorf("Err unknown type: %v", string(t))
 	}
 }
 
