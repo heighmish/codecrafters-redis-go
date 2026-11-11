@@ -115,6 +115,20 @@ func RPUSH(args []*resp.Resp, cache *storage.Cache) []byte {
 
 }
 
+func normaliseIndex(val, len int) int {
+	if val < 0 {
+		if val*-1 > len {
+			return 0
+		}
+		return len + val
+	} else {
+		if val > len {
+			return len
+		}
+		return val
+	}
+}
+
 func LRANGE(args []*resp.Resp, cache *storage.Cache) []byte {
 	if len(args) < 3 {
 		return []byte(resp.ToError("Usage: LRANGE <list_key> <start_index> <stop_index>"))
@@ -135,15 +149,9 @@ func LRANGE(args []*resp.Resp, cache *storage.Cache) []byte {
 		fmt.Printf("Array with key %v not found\r\n", key)
 	}
 
-	if startIdx < 0 {
-		// [1, 2, 3]
-		// idx = -1 == 3 + - 1 = 2
-		startIdx = len(arr) + startIdx
-	}
+	startIdx = normaliseIndex(startIdx, len(arr))
+	stopIdx = normaliseIndex(stopIdx, len(arr))
 
-	if stopIdx < 0 {
-		stopIdx = len(arr) + stopIdx
-	}
 	if startIdx >= len(arr) || startIdx > stopIdx {
 		return []byte("*0\r\n")
 	}
