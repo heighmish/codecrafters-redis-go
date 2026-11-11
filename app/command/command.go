@@ -76,10 +76,10 @@ func ExecuteCommand(c *Command, container *storage.Container, lists *storage.Lis
 		return []byte(resp.ToBulkString(val.Data))
 	case "RPUSH":
 		if len(c.Args) < 2 {
-			return []byte(resp.ToError("Usage: RPUSH <listKey> <value>"))
+			return []byte(resp.ToError("Usage: RPUSH <listKey> <value_1> <value_...> <value_n>"))
 		}
 		key := c.Args[0].Data
-		length := lists.Push(key, *c.Args[1])
+		length := lists.Push(key, c.Args[1:])
 		return []byte(resp.ToRespInt(length))
 	default:
 		fmt.Println("Unknown command: ", c.Name)

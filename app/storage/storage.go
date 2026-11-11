@@ -20,7 +20,7 @@ func NewListMap() *ListMap {
 	}
 }
 
-func (lm *ListMap) Push(key string, value resp.Resp) int {
+func (lm *ListMap) Push(key string, values []*resp.Resp) int {
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()
 	arr, ok := lm.lists[key]
@@ -28,7 +28,9 @@ func (lm *ListMap) Push(key string, value resp.Resp) int {
 		fmt.Println("Creating list with key: ", key)
 		arr = make([]resp.Resp, 0)
 	}
-	arr = append(arr, value)
+	for _, val := range values {
+		arr = append(arr, *val)
+	}
 	lm.lists[key] = arr
 	return len(arr)
 }
