@@ -101,11 +101,11 @@ func ExecuteCommand(c *Command, container *storage.Container, lists *storage.Lis
 		if !ok {
 			fmt.Printf("Array with key %v not found\r\n", key)
 		}
-		if startIdx >= len(arr) || stopIdx >= len(arr) || startIdx > stopIdx {
+		if startIdx >= len(arr) || startIdx > stopIdx {
 			return []byte("*0\r\n")
 		}
 
-		return []byte(resp.ToRespArray(arr[startIdx : stopIdx+1]))
+		return []byte(resp.ToRespArray(arr[startIdx:min(stopIdx+1, len(arr))]))
 
 	default:
 		fmt.Println("Unknown command: ", c.Name)
