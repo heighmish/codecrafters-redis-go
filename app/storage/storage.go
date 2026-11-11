@@ -77,7 +77,7 @@ func (lm *ListMap) PopElement(key string) (*resp.Resp, bool) {
 	}
 
 	element := arr[0]
-	arr = slices.Delete(arr, 0, 1)
+	lm.lists[key] = slices.Delete(arr, 0, 1)
 	return &element, true
 }
 
