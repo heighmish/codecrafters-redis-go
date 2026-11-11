@@ -27,7 +27,7 @@ func NewCommand(arr []*resp.Resp) *Command {
 	}
 }
 
-func ExecuteCommand(c *Command, container *storage.Container) []byte {
+func ExecuteCommand(c *Command, container *storage.Container, lists *storage.ListMap) []byte {
 	fmt.Println("Processing command: ", c.Name)
 	switch c.Name {
 	case "PING":
@@ -73,16 +73,14 @@ func ExecuteCommand(c *Command, container *storage.Container) []byte {
 			return []byte(resp.ToBulkString(""))
 		}
 
-		if val.ExpiryTime != nil {
-			if time.Now().UTC().Compare(*val.ExpiryTime) > 0 {
-				fmt.Printf("Key %s expired\r\n", key)
-				container.Delete(key)
-				return []byte(resp.ToBulkString(""))
-			}
-		}
-
 		return []byte(resp.ToBulkString(val.Data))
-
+	case "RPUSH":
+		if len(c.Args) < 2 {
+			return []byte(resp.ToError("Usage: RPUSH <listKey> <value>"))
+		}
+		key := c.Args[0].Data
+		length := lists.Push(key, *c.Args[1])
+		return []byte(resp.ToRespInt(length))
 	default:
 		fmt.Println("Unknown command: ", c.Name)
 		return ([]byte("-ERR unknown command\r\n"))
