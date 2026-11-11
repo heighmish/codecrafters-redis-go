@@ -76,11 +76,37 @@ func ExecuteCommand(c *Command, container *storage.Container, lists *storage.Lis
 		return []byte(resp.ToBulkString(val.Data))
 	case "RPUSH":
 		if len(c.Args) < 2 {
-			return []byte(resp.ToError("Usage: RPUSH <listKey> <value_1> <value_...> <value_n>"))
+			return []byte(resp.ToError("Usage: RPUSH <list_key> <value_1> <value_...> <value_n>"))
 		}
+
 		key := c.Args[0].Data
 		length := lists.Push(key, c.Args[1:])
 		return []byte(resp.ToRespInt(length))
+	case "LRANGE":
+		if len(c.Args) < 3 {
+			return []byte(resp.ToError("Usage: LRANGE <list_key> <start_index> <stop_index>"))
+		}
+		startIdx, err := strconv.Atoi(c.Args[1].Data)
+		if err != nil {
+			return []byte(resp.ToError("Usage: LRANGE <list_key> <start_index> <stop_index>"))
+		}
+
+		stopIdx, err := strconv.Atoi(c.Args[2].Data)
+		if err != nil {
+			return []byte(resp.ToError("Usage: LRANGE <list_key> <start_index> <stop_index>"))
+		}
+
+		key := c.Args[0].Data
+		arr, ok := lists.GetList(key)
+		if !ok {
+			fmt.Printf("Array with key %v not found\r\n", key)
+		}
+		if startIdx >= len(arr) || stopIdx >= len(arr) || startIdx > stopIdx {
+			return []byte("*0\r\n")
+		}
+
+		return []byte(resp.ToRespArray(arr[startIdx : stopIdx+1]))
+
 	default:
 		fmt.Println("Unknown command: ", c.Name)
 		return ([]byte("-ERR unknown command\r\n"))

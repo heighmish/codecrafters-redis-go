@@ -35,6 +35,13 @@ func (lm *ListMap) Push(key string, values []*resp.Resp) int {
 	return len(arr)
 }
 
+func (lm *ListMap) GetList(key string) ([]resp.Resp, bool) {
+	lm.Mu.Lock()
+	defer lm.Mu.Unlock()
+	val, ok := lm.lists[key]
+	return val, ok
+}
+
 type Container struct {
 	Mu      sync.Mutex // Replace with RWMutex
 	Storage storage

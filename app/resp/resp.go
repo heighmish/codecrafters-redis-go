@@ -1,6 +1,9 @@
 package resp
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Type rune
 
@@ -24,6 +27,35 @@ func (r *Resp) ToBulkString() string {
 		return "-1\r\n"
 	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(r.Data), r.Data)
+}
+
+func (r *Resp) String() string {
+	switch r.T {
+	case Array:
+		var sb strings.Builder
+		for _, r := range r.Elements {
+			sb.WriteString(r.String())
+		}
+		return sb.String()
+	case Bulk:
+		return ToBulkString(r.Data)
+	case Error:
+		return ToError(r.Data)
+	case Integer:
+		return ToRespInt(r.Integer)
+	case String:
+		return ToSimpleString(r.Data)
+	}
+	panic("[Resp To String] - unreachable")
+}
+
+func ToRespArray(arr []Resp) string {
+	len := len(arr)
+	var sb strings.Builder
+	for _, r := range arr {
+		sb.WriteString(r.String())
+	}
+	return fmt.Sprintf("*%v\r\n%v", len, sb.String())
 }
 
 func ToRespInt(i int) string {
