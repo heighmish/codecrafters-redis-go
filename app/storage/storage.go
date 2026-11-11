@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"redis-go/app/resp"
+	"slices"
 	"sync"
 	"time"
 )
@@ -42,6 +43,22 @@ func (lm *ListMap) Push(key string, values []*resp.Resp) int {
 	}
 	for _, val := range values {
 		arr = append(arr, *val)
+	}
+	lm.lists[key] = arr
+	return len(arr)
+}
+
+func (lm *ListMap) Prepend(key string, values []*resp.Resp) int {
+	// Horribly inefficient fix it later
+	lm.Mu.Lock()
+	defer lm.Mu.Unlock()
+	arr, ok := lm.lists[key]
+	if !ok {
+		fmt.Println("Creating list with key: ", key)
+		arr = make([]resp.Resp, 0)
+	}
+	for _, val := range values {
+		arr = slices.Insert(arr, 0, *val)
 	}
 	lm.lists[key] = arr
 	return len(arr)

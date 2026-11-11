@@ -112,7 +112,16 @@ func RPUSH(args []*resp.Resp, cache *storage.Cache) []byte {
 	key := args[0].Data
 	length := cache.Lists.Push(key, args[1:])
 	return []byte(resp.ToRespInt(length))
+}
 
+func LPUSH(args []*resp.Resp, cache *storage.Cache) []byte {
+	if len(args) < 2 {
+		return []byte(resp.ToError("Usage: LPUSH <list_key> <value_1> <value_...> <value_n>"))
+	}
+
+	key := args[0].Data
+	length := cache.Lists.Prepend(key, args[1:])
+	return []byte(resp.ToRespInt(length))
 }
 
 func normaliseIndex(val, len int) int {
