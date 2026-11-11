@@ -26,10 +26,7 @@ func (lm *ListMap) Push(key string, value resp.Resp) int {
 	arr, ok := lm.lists[key]
 	if !ok {
 		fmt.Println("Creating list with key: ", key)
-		newArr := make([]resp.Resp, 1)
-		newArr[0] = value
-		lm.lists[key] = newArr
-		return 1
+		arr = make([]resp.Resp, 0)
 	}
 	arr = append(arr, value)
 	lm.lists[key] = arr
