@@ -134,10 +134,21 @@ func LRANGE(args []*resp.Resp, cache *storage.Cache) []byte {
 	if !ok {
 		fmt.Printf("Array with key %v not found\r\n", key)
 	}
+
+	if startIdx < 0 {
+		// [1, 2, 3]
+		// idx = -1 == 3 + - 1 = 2
+		startIdx = len(arr) + startIdx
+	}
+
+	if stopIdx < 0 {
+		stopIdx = len(arr) + stopIdx
+	}
 	if startIdx >= len(arr) || startIdx > stopIdx {
 		return []byte("*0\r\n")
 	}
 
+	fmt.Printf("Array Length: %v, startIdx: %v, stopIdx: %v\r\n", len(arr), startIdx, stopIdx)
 	return []byte(resp.ToRespArray(arr[startIdx:min(stopIdx+1, len(arr))]))
 
 }
