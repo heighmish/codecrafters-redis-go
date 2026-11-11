@@ -19,20 +19,20 @@ func main() {
 		os.Exit(1)
 	}
 	defer l.Close()
+	container := storage.NewContainer()
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		go handleConnection(conn)
+		go handleConnection(conn, &container)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, container *storage.Container) {
 	defer conn.Close()
 	parser := parser.NewParser(conn)
-	storage := make(storage.Storage)
 	for {
 		fmt.Println("Waiting for next command...")
 		value, err := parser.ReadResp()
@@ -48,6 +48,6 @@ func handleConnection(conn net.Conn) {
 
 		fmt.Println("Successfully received next command!")
 		c := command.NewCommand(value.Elements)
-		conn.Write(command.ExecuteCommand(c, storage))
+		conn.Write(command.ExecuteCommand(c, container))
 	}
 }

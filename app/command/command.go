@@ -27,7 +27,7 @@ func NewCommand(arr []*resp.Resp) *Command {
 	}
 }
 
-func ExecuteCommand(c *Command, s storage.Storage) []byte {
+func ExecuteCommand(c *Command, container *storage.Container) []byte {
 	fmt.Println("Processing command: ", c.Name)
 	switch c.Name {
 	case "PING":
@@ -53,12 +53,12 @@ func ExecuteCommand(c *Command, s storage.Storage) []byte {
 					return []byte("-ERR Usage: SET <key> <value> <px> <expiryInMilliseconds>\r\n")
 				}
 				expiryTime := time.Now().UTC().Add(time.Duration(expiry) * time.Millisecond)
-				s[key] = storage.NewValueWithExpiry(*c.Args[1], &expiryTime)
+				container.Add(key, storage.NewValueWithExpiry(*c.Args[1], &expiryTime))
 				fmt.Printf("Adding key %v with expiry time %v\r\n", key, expiryTime)
 				return []byte(resp.ToSimpleString("OK"))
 			}
 		}
-		s[key] = storage.NewValue(*c.Args[1])
+		container.Add(key, storage.NewValue(*c.Args[1]))
 
 		return []byte(resp.ToSimpleString("OK"))
 	case "GET":
@@ -67,7 +67,7 @@ func ExecuteCommand(c *Command, s storage.Storage) []byte {
 		}
 		key := c.Args[0].Data
 
-		val, ok := s[key]
+		val, ok := container.Get(key)
 		if !ok {
 			fmt.Printf("Key %v not found\r\n", key)
 			return []byte(resp.ToBulkString(""))
@@ -76,7 +76,7 @@ func ExecuteCommand(c *Command, s storage.Storage) []byte {
 		if val.ExpiryTime != nil {
 			if time.Now().UTC().Compare(*val.ExpiryTime) > 0 {
 				fmt.Printf("Key %s expired\r\n", key)
-				delete(s, key)
+				container.Delete(key)
 				return []byte(resp.ToBulkString(""))
 			}
 		}
