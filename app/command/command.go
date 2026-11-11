@@ -169,3 +169,18 @@ func LRANGE(args []*resp.Resp, cache *storage.Cache) []byte {
 	return []byte(resp.ToRespArray(arr[startIdx:min(stopIdx+1, len(arr))]))
 
 }
+
+func LLEN(args []*resp.Resp, cache *storage.Cache) []byte {
+	if len(args) != 1 {
+		return []byte(resp.ToError("Usage: LLEN <list_key>"))
+	}
+
+	key := args[0].Data
+
+	arr, ok := cache.Lists.GetList(key)
+	if !ok {
+		return []byte(resp.ToRespInt(0))
+	}
+
+	return []byte(resp.ToRespInt(len(arr)))
+}
