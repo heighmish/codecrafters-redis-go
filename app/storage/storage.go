@@ -32,6 +32,7 @@ func (lm *ListMap) Push(key string, value resp.Resp) int {
 		return 1
 	}
 	arr = append(arr, value)
+	lm.lists[key] = arr
 	return len(arr)
 }
 
