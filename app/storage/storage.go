@@ -64,6 +64,23 @@ func (lm *ListMap) Prepend(key string, values []*resp.Resp) int {
 	return len(arr)
 }
 
+func (lm *ListMap) PopElement(key string) (*resp.Resp, bool) {
+	lm.Mu.Lock()
+	defer lm.Mu.Unlock()
+	arr, ok := lm.lists[key]
+	if !ok {
+		return nil, false
+	}
+
+	if len(arr) == 0 {
+		return nil, false
+	}
+
+	element := arr[0]
+	arr = slices.Delete(arr, 0, 1)
+	return &element, true
+}
+
 func (lm *ListMap) GetList(key string) ([]resp.Resp, bool) {
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()

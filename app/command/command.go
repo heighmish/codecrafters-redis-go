@@ -184,3 +184,17 @@ func LLEN(args []*resp.Resp, cache *storage.Cache) []byte {
 
 	return []byte(resp.ToRespInt(len(arr)))
 }
+
+func LPOP(args []*resp.Resp, cache *storage.Cache) []byte {
+	if len(args) != 1 {
+		return []byte(resp.ToError("Usage: LPOP <list_key>"))
+	}
+
+	key := args[0].Data
+	element, ok := cache.Lists.PopElement(key)
+	if !ok {
+		return []byte(resp.ToBulkString(""))
+	}
+
+	return []byte(element.String())
+}

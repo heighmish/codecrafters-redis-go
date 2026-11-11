@@ -41,6 +41,7 @@ func registerCommands(cd *command.CommandDispatcher) {
 	cd.RegisterCommand("LRANGE", command.LRANGE)
 	cd.RegisterCommand("LPUSH", command.LPUSH)
 	cd.RegisterCommand("LLEN", command.LLEN)
+	cd.RegisterCommand("LPOP", command.LPOP)
 }
 
 func handleConnection(conn net.Conn, cache *storage.Cache, dispatcher *command.CommandDispatcher) {
