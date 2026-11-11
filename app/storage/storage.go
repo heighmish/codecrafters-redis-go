@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+type Cache struct {
+	Lists     *ListMap
+	Container *Container
+}
+
+func NewCache() *Cache {
+	return &Cache{
+		Lists:     NewListMap(),
+		Container: NewContainer(),
+	}
+}
+
 type storage map[string]Value
 
 type ListMap struct {

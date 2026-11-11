@@ -12,6 +12,8 @@ import (
 
 func main() {
 	fmt.Println("Logs from your program will appear here!")
+	commandDispatcher := command.NewCommandDispatcher()
+	registerCommands(commandDispatcher)
 
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
@@ -19,19 +21,27 @@ func main() {
 		os.Exit(1)
 	}
 	defer l.Close()
-	container := storage.NewContainer()
-	lists := storage.NewListMap()
+	cache := storage.NewCache()
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		go handleConnection(conn, container, lists)
+		go handleConnection(conn, cache, commandDispatcher)
 	}
 }
 
-func handleConnection(conn net.Conn, container *storage.Container, lists *storage.ListMap) {
+func registerCommands(cd *command.CommandDispatcher) {
+	cd.RegisterCommand("PING", command.Ping)
+	cd.RegisterCommand("ECHO", command.Echo)
+	cd.RegisterCommand("GET", command.Get)
+	cd.RegisterCommand("SET", command.Set)
+	cd.RegisterCommand("RPUSH", command.RPUSH)
+	cd.RegisterCommand("LRANGE", command.LRANGE)
+}
+
+func handleConnection(conn net.Conn, cache *storage.Cache, dispatcher *command.CommandDispatcher) {
 	defer conn.Close()
 	parser := parser.NewParser(conn)
 	for {
@@ -49,6 +59,6 @@ func handleConnection(conn net.Conn, container *storage.Container, lists *storag
 
 		fmt.Println("Successfully received next command!")
 		c := command.NewCommand(value.Elements)
-		conn.Write(command.ExecuteCommand(c, container, lists))
+		conn.Write(dispatcher.DispatchCommand(*c, cache))
 	}
 }
