@@ -49,7 +49,7 @@ func (lm *ListMap) Push(key string, values []*resp.Resp) int {
 }
 
 func (lm *ListMap) Prepend(key string, values []*resp.Resp) int {
-	// Horribly inefficient fix it later
+	// Horribly inefficient fix it later by building and merging the slices with preallocations
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()
 	arr, ok := lm.lists[key]
@@ -64,7 +64,7 @@ func (lm *ListMap) Prepend(key string, values []*resp.Resp) int {
 	return len(arr)
 }
 
-func (lm *ListMap) PopElement(key string) (*resp.Resp, bool) {
+func (lm *ListMap) PopElements(key string, removalCount int) ([]resp.Resp, bool) {
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()
 	arr, ok := lm.lists[key]
@@ -73,12 +73,18 @@ func (lm *ListMap) PopElement(key string) (*resp.Resp, bool) {
 	}
 
 	if len(arr) == 0 {
+		delete(lm.lists, key)
 		return nil, false
 	}
 
-	element := arr[0]
-	lm.lists[key] = slices.Delete(arr, 0, 1)
-	return &element, true
+	if removalCount > len(arr) {
+		removalCount = len(arr)
+	}
+
+	elements := make([]resp.Resp, removalCount)
+	copy(elements, arr[0:removalCount])
+	lm.lists[key] = slices.Delete(arr, 0, removalCount)
+	return elements, true
 }
 
 func (lm *ListMap) GetList(key string) ([]resp.Resp, bool) {

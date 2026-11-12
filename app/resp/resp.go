@@ -46,6 +46,7 @@ func (r *Resp) String() string {
 	case String:
 		return ToSimpleString(r.Data)
 	}
+	fmt.Printf("[Resp To String] Unreachable - %v\r\n", r.T)
 	panic("[Resp To String] - unreachable")
 }
 

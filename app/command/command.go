@@ -186,15 +186,29 @@ func LLEN(args []*resp.Resp, cache *storage.Cache) []byte {
 }
 
 func LPOP(args []*resp.Resp, cache *storage.Cache) []byte {
-	if len(args) != 1 {
+	if len(args) > 2 {
 		return []byte(resp.ToError("Usage: LPOP <list_key>"))
 	}
 
 	key := args[0].Data
-	element, ok := cache.Lists.PopElement(key)
+	if len(args) == 2 {
+		removalCount, err := strconv.Atoi(args[1].Data)
+		if err != nil || removalCount < 0 {
+			return []byte(resp.ToError("Usage: LPOP <list_key> <num_to_pop>"))
+		}
+		slice, ok := cache.Lists.PopElements(key, removalCount)
+
+		if !ok {
+			return []byte(resp.ToBulkString(""))
+		}
+
+		return []byte(resp.ToRespArray(slice))
+	}
+
+	slice, ok := cache.Lists.PopElements(key, 1)
 	if !ok {
 		return []byte(resp.ToBulkString(""))
 	}
 
-	return []byte(element.String())
+	return []byte(slice[0].String())
 }
