@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	connContext "redis-go/app/context"
 	"redis-go/app/resp"
 	"redis-go/app/storage"
 	"strconv"
@@ -10,27 +11,27 @@ import (
 )
 
 type CommandDispatcher struct {
-	commands map[string]func([]*resp.Resp, *storage.Cache) []byte
+	commands map[string]func([]*resp.Resp, *storage.Cache, *connContext.Context) []byte
 }
 
 func NewCommandDispatcher() *CommandDispatcher {
 	return &CommandDispatcher{
-		commands: make(map[string]func([]*resp.Resp, *storage.Cache) []byte),
+		commands: make(map[string]func([]*resp.Resp, *storage.Cache, *connContext.Context) []byte),
 	}
 }
 
-func (cd *CommandDispatcher) RegisterCommand(command string, f func([]*resp.Resp, *storage.Cache) []byte) {
+func (cd *CommandDispatcher) RegisterCommand(command string, f func([]*resp.Resp, *storage.Cache, *connContext.Context) []byte) {
 	cd.commands[command] = f
 }
 
-func (cd *CommandDispatcher) DispatchCommand(command Command, cache *storage.Cache) []byte {
+func (cd *CommandDispatcher) DispatchCommand(command Command, cache *storage.Cache, ctx *connContext.Context) []byte {
 	f, ok := cd.commands[command.Name]
 	if !ok {
 		fmt.Println("Unknown command: ", command)
 		return ([]byte("-ERR unknown command\r\n"))
 	}
 
-	return f(command.Args, cache)
+	return f(command.Args, cache, ctx)
 }
 
 type Command struct {
@@ -51,11 +52,11 @@ func NewCommand(arr []*resp.Resp) *Command {
 	}
 }
 
-func Ping(args []*resp.Resp, cache *storage.Cache) []byte {
+func Ping(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	return []byte(resp.ToSimpleString("PONG"))
 }
 
-func Echo(args []*resp.Resp, cache *storage.Cache) []byte {
+func Echo(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 1 {
 		return []byte("-ERR Usage: ECHO <arg>\r\n")
 	}
@@ -63,7 +64,7 @@ func Echo(args []*resp.Resp, cache *storage.Cache) []byte {
 	return ([]byte(args[0].ToBulkString()))
 }
 
-func Set(args []*resp.Resp, cache *storage.Cache) []byte {
+func Set(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 2 {
 		return []byte("-ERR Usage: SET <key> <value>\r\n")
 	}
@@ -89,7 +90,7 @@ func Set(args []*resp.Resp, cache *storage.Cache) []byte {
 
 }
 
-func Get(args []*resp.Resp, cache *storage.Cache) []byte {
+func Get(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 1 {
 		return []byte(resp.ToError("Usage: GET <key>"))
 	}
@@ -104,7 +105,7 @@ func Get(args []*resp.Resp, cache *storage.Cache) []byte {
 	return []byte(resp.ToBulkString(val.Data))
 }
 
-func RPUSH(args []*resp.Resp, cache *storage.Cache) []byte {
+func RPUSH(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 2 {
 		return []byte(resp.ToError("Usage: RPUSH <list_key> <value_1> <value_...> <value_n>"))
 	}
@@ -114,7 +115,7 @@ func RPUSH(args []*resp.Resp, cache *storage.Cache) []byte {
 	return []byte(resp.ToRespInt(length))
 }
 
-func LPUSH(args []*resp.Resp, cache *storage.Cache) []byte {
+func LPUSH(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 2 {
 		return []byte(resp.ToError("Usage: LPUSH <list_key> <value_1> <value_...> <value_n>"))
 	}
@@ -138,7 +139,7 @@ func normaliseIndex(val, len int) int {
 	}
 }
 
-func LRANGE(args []*resp.Resp, cache *storage.Cache) []byte {
+func LRANGE(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 3 {
 		return []byte(resp.ToError("Usage: LRANGE <list_key> <start_index> <stop_index>"))
 	}
@@ -170,7 +171,7 @@ func LRANGE(args []*resp.Resp, cache *storage.Cache) []byte {
 
 }
 
-func LLEN(args []*resp.Resp, cache *storage.Cache) []byte {
+func LLEN(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) != 1 {
 		return []byte(resp.ToError("Usage: LLEN <list_key>"))
 	}
@@ -185,7 +186,7 @@ func LLEN(args []*resp.Resp, cache *storage.Cache) []byte {
 	return []byte(resp.ToRespInt(len(arr)))
 }
 
-func LPOP(args []*resp.Resp, cache *storage.Cache) []byte {
+func LPOP(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) > 2 {
 		return []byte(resp.ToError("Usage: LPOP <list_key>"))
 	}
@@ -211,4 +212,23 @@ func LPOP(args []*resp.Resp, cache *storage.Cache) []byte {
 	}
 
 	return []byte(slice[0].String())
+}
+
+func BLPOP(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+	// Todo!
+	if len(args) > 2 {
+		return []byte(resp.ToError("Usage: BLPOP <list_key> <timeout>"))
+	}
+
+	key := args[0].Data
+	val, ok := cache.Lists.Blpop(key, ctx.Id)
+	if !ok {
+		return []byte("*-1\r\n")
+	}
+
+	arr := make([]resp.Resp, 2)
+	arr[0] = *args[0]
+	arr[1] = val
+
+	return []byte(resp.ToRespArray(arr))
 }

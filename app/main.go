@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"redis-go/app/command"
+	connContext "redis-go/app/context"
 	"redis-go/app/parser"
 	"redis-go/app/storage"
 )
@@ -22,13 +23,15 @@ func main() {
 	}
 	defer l.Close()
 	cache := storage.NewCache()
+	id := 0
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		go handleConnection(conn, cache, commandDispatcher)
+		go handleConnection(conn, cache, commandDispatcher, id)
+		id += 1
 	}
 }
 
@@ -42,11 +45,13 @@ func registerCommands(cd *command.CommandDispatcher) {
 	cd.RegisterCommand("LPUSH", command.LPUSH)
 	cd.RegisterCommand("LLEN", command.LLEN)
 	cd.RegisterCommand("LPOP", command.LPOP)
+	cd.RegisterCommand("BLPOP", command.BLPOP)
 }
 
-func handleConnection(conn net.Conn, cache *storage.Cache, dispatcher *command.CommandDispatcher) {
+func handleConnection(conn net.Conn, cache *storage.Cache, dispatcher *command.CommandDispatcher, id int) {
 	defer conn.Close()
 	parser := parser.NewParser(conn)
+	context := connContext.NewContext(id)
 	for {
 		fmt.Println("Waiting for next command...")
 		value, err := parser.ReadResp()
@@ -62,6 +67,6 @@ func handleConnection(conn net.Conn, cache *storage.Cache, dispatcher *command.C
 
 		fmt.Println("Successfully received next command!")
 		c := command.NewCommand(value.Elements)
-		conn.Write(dispatcher.DispatchCommand(*c, cache))
+		conn.Write(dispatcher.DispatchCommand(*c, cache, context))
 	}
 }
