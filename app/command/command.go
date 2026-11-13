@@ -248,7 +248,7 @@ func TYPE(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 	key := args[0].Data
 	_, ok := cache.Container.Get(key)
 	if !ok {
-		return []byte(resp.ToSimpleString("NONE"))
+		return []byte(resp.ToSimpleString("none"))
 	}
 	return []byte(resp.ToSimpleString("string"))
 }
