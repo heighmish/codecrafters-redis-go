@@ -127,6 +127,9 @@ func (lm *ListMap) Blpop(key string, timeout float64, waiterId int) (resp.Resp, 
 		case v := <-c:
 			return v, true
 		case <-block:
+			// Todo!
+			// Introduce some extra state on the listener to ensure race condition doesnt happen where timeout occurs as push pushes in
+			// Add state - WAITING, DELIVERED, CANCELLED, TIMEOUT
 			lm.CleanUpListeners(key, waiterId)
 			return resp.Resp{}, false
 		}

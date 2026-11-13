@@ -240,3 +240,15 @@ func BLPOP(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []
 
 	return []byte(resp.ToRespArray(arr))
 }
+
+func TYPE(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+	if len(args) != 1 {
+		return []byte(resp.ToError("Usage: TYPE <key>"))
+	}
+	key := args[0].Data
+	_, ok := cache.Container.Get(key)
+	if !ok {
+		return []byte(resp.ToSimpleString("NONE"))
+	}
+	return []byte(resp.ToSimpleString("string"))
+}
