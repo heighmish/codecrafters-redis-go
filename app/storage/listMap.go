@@ -14,7 +14,7 @@ type ListMap struct {
 }
 
 type Listener struct {
-	Channel chan byte
+	Channel chan resp.Resp
 	Id      int
 }
 
@@ -28,28 +28,45 @@ func NewListMap() *ListMap {
 func (lm *ListMap) Push(key string, values []*resp.Resp) int {
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()
+	index := 0
+	channelsPublished := 0
+	channels, ok := lm.listeners[key]
+	if ok {
+		for ; index < len(values) && index < len(channels); index++ {
+			channels[index].Channel <- *values[index]
+		}
+		channelsPublished = index
+		lm.listeners[key] = slices.Delete(channels, 0, index)
+	}
+
 	arr, ok := lm.lists[key]
 	if !ok {
 		fmt.Println("Creating list with key: ", key)
 		arr = make([]resp.Resp, 0)
 	}
 
-	channels, channelsExist := lm.listeners[key]
-	for index, value := range values {
-		arr = append(arr, *value)
-		if channelsExist && index < len(channels) {
-			channels[index].Channel <- 0
-		}
+	for ; index < len(values); index++ {
+		arr = append(arr, *values[index])
 	}
 
 	lm.lists[key] = arr
-	return len(arr)
+	return len(arr) + channelsPublished
 }
 
 func (lm *ListMap) Prepend(key string, values []*resp.Resp) int {
 	// Horribly inefficient fix it later by building and merging the slices with preallocations
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()
+	index := 0
+	channelsPublished := 0
+	channels, ok := lm.listeners[key]
+	if ok {
+		for ; index < len(values) && index < len(channels); index++ {
+			channels[index].Channel <- *values[index]
+		}
+		channelsPublished = index
+		lm.listeners[key] = slices.Delete(channels, 0, index)
+	}
 
 	arr, ok := lm.lists[key]
 	if !ok {
@@ -57,16 +74,12 @@ func (lm *ListMap) Prepend(key string, values []*resp.Resp) int {
 		arr = make([]resp.Resp, 0)
 	}
 
-	channels, channelsExist := lm.listeners[key]
-	for index, value := range values {
-		arr = slices.Insert(arr, 0, *value)
-		if channelsExist && index < len(channels) {
-			channels[index].Channel <- 0
-		}
+	for ; index < len(values); index++ {
+		arr = slices.Insert(arr, 0, *values[index])
 	}
 
 	lm.lists[key] = arr
-	return len(arr)
+	return len(arr) + channelsPublished
 }
 
 func (lm *ListMap) PopElements(key string, removalCount int) ([]resp.Resp, bool) {
@@ -89,7 +102,7 @@ func (lm *ListMap) Blpop(key string, waiterId int) (resp.Resp, bool) {
 		return element[0], true
 	}
 
-	c := make(chan byte)
+	c := make(chan resp.Resp, 1)
 	// Todo - track goroutines set of listeners and clean up when they leave
 	// Todo - i guess add an object tracking thread local state into commandDispatcher state
 	listener := Listener{
@@ -107,20 +120,8 @@ func (lm *ListMap) Blpop(key string, waiterId int) (resp.Resp, bool) {
 
 	// Channel created, unlock and wait for new client to add an element
 	lm.Mu.Unlock()
-	_ = <-c
-	lm.Mu.Lock()
-	listeners, ok = lm.listeners[key]
-	if ok {
-		lm.listeners[key] = slices.DeleteFunc(listeners, func(listener Listener) bool { return listener.Id == waiterId })
-	}
-
-	element, ok = lm.popElementsLocked(key, 1)
-	if !ok {
-		fmt.Printf("[ERROR BLPOP] - Channel with id %v awoken but no value ready\r\n", waiterId)
-		return resp.Resp{}, false
-	}
-	lm.Mu.Unlock()
-	return element[0], true
+	v := <-c
+	return v, true
 }
 
 func (lm *ListMap) popElementsLocked(key string, removalCount int) ([]resp.Resp, bool) {
