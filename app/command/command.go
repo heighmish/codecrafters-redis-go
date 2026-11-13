@@ -220,8 +220,16 @@ func BLPOP(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []
 		return []byte(resp.ToError("Usage: BLPOP <list_key> <timeout>"))
 	}
 
+	timeout := 0.0
+	if len(args) == 2 {
+		timeoutParsed, err := strconv.ParseFloat(args[1].Data, 64)
+		if err == nil {
+			timeout = timeoutParsed
+		}
+	}
+
 	key := args[0].Data
-	val, ok := cache.Lists.Blpop(key, ctx.Id)
+	val, ok := cache.Lists.Blpop(key, timeout, ctx.Id)
 	if !ok {
 		return []byte("*-1\r\n")
 	}

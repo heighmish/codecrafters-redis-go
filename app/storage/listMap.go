@@ -5,6 +5,7 @@ import (
 	"redis-go/app/resp"
 	"slices"
 	"sync"
+	"time"
 )
 
 type ListMap struct {
@@ -94,7 +95,7 @@ func (lm *ListMap) GetList(key string) ([]resp.Resp, bool) {
 	return lm.getListLocked(key)
 }
 
-func (lm *ListMap) Blpop(key string, waiterId int) (resp.Resp, bool) {
+func (lm *ListMap) Blpop(key string, timeout float64, waiterId int) (resp.Resp, bool) {
 	lm.Mu.Lock()
 	element, ok := lm.popElementsLocked(key, 1)
 	if ok {
@@ -120,8 +121,29 @@ func (lm *ListMap) Blpop(key string, waiterId int) (resp.Resp, bool) {
 
 	// Channel created, unlock and wait for new client to add an element
 	lm.Mu.Unlock()
+	if timeout != 0 {
+		block := time.After(time.Duration(timeout * float64(time.Second)))
+		select {
+		case v := <-c:
+			return v, true
+		case <-block:
+			lm.CleanUpListeners(key, waiterId)
+			return resp.Resp{}, false
+		}
+	}
 	v := <-c
 	return v, true
+}
+
+func (lm *ListMap) CleanUpListeners(key string, waiterId int) {
+	lm.Mu.Lock()
+	defer lm.Mu.Unlock()
+	listeners, ok := lm.listeners[key]
+	if !ok {
+		return
+	}
+
+	lm.listeners[key] = slices.DeleteFunc(listeners, func(l Listener) bool { return l.Id == waiterId })
 }
 
 func (lm *ListMap) popElementsLocked(key string, removalCount int) ([]resp.Resp, bool) {
