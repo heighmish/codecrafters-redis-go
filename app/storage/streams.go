@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type StreamMap struct {
@@ -91,8 +92,24 @@ func (id EntryId) IsAfter(other EntryId) bool {
 }
 
 func NewEntryId(id string, lastEntry *EntryId) (EntryId, error) {
-	time, sequenceNumber, found := strings.Cut(id, "-")
+	// Todo: help
 	newEntry := EntryId{}
+	if id == "*" {
+		newEntry.time = time.Now().UnixMilli()
+		if lastEntry != nil && lastEntry.time == newEntry.time {
+			newEntry.sequenceNumber = lastEntry.sequenceNumber + 1
+		} else {
+			newEntry.sequenceNumber = 0
+		}
+
+		if lastEntry != nil && !newEntry.IsAfter(*lastEntry) {
+			return EntryId{}, errors.New("The ID specified in XADD is equal or smaller than the target stream top item")
+		}
+
+		return newEntry, nil
+	}
+
+	time, sequenceNumber, found := strings.Cut(id, "-")
 	if !found {
 		return EntryId{}, fmt.Errorf("Invalid entryId %v", id)
 	}
