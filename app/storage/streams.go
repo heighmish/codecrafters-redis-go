@@ -147,6 +147,12 @@ func (sm *StreamMap) GetStream(key string) (Stream, bool) {
 }
 
 func parseEntryIdQuery(id string, start bool) (EntryId, error) {
+	if id == "-" {
+		return EntryId{time: 0, sequenceNumber: 0}, nil
+	}
+	if id == "+" {
+		return EntryId{time: math.MaxInt64, sequenceNumber: math.MaxInt64}, nil
+	}
 	time, sequence, found := strings.Cut(id, "-")
 	if !found {
 		timeParsed, err := strconv.ParseInt(id, 10, 64)
