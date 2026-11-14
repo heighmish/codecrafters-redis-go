@@ -88,14 +88,14 @@ func (p *Parser) parseArray() (resp.Resp, error) {
 	if err != nil {
 		return resp.Resp{}, err
 	}
-	elements := make([]*resp.Resp, length.Integer)
+	elements := make([]resp.Resp, length.Integer)
 	for i := range length.Integer {
 		value, err := p.ReadResp()
 		if err != nil {
 			fmt.Printf("Error reading RESP: %v", err)
 			return resp.Resp{}, err
 		}
-		elements[i] = &value
+		elements[i] = value
 	}
 	return resp.Resp{T: resp.Array, Elements: elements}, nil
 }

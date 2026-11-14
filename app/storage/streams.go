@@ -114,7 +114,7 @@ func NewStreamMap() *StreamMap {
 	return &StreamMap{streams: make(map[string]Stream)}
 }
 
-func (sm *StreamMap) AddEntry(key string, id string, kvs []*resp.Resp) (string, error) {
+func (sm *StreamMap) AddEntry(key string, id string, kvs []resp.Resp) (string, error) {
 	if len(kvs) == 0 || len(kvs)%2 != 0 {
 		return "", fmt.Errorf("Invalid number of entry KV pairs: %v", len(kvs))
 	}

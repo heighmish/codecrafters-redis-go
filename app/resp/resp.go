@@ -18,7 +18,7 @@ const (
 type Resp struct {
 	T        Type
 	Data     string
-	Elements []*Resp
+	Elements []Resp
 	Integer  int
 }
 

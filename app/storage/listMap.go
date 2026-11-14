@@ -26,7 +26,7 @@ func NewListMap() *ListMap {
 	}
 }
 
-func (lm *ListMap) Push(key string, values []*resp.Resp) int {
+func (lm *ListMap) Push(key string, values []resp.Resp) int {
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()
 	index := 0
@@ -34,7 +34,7 @@ func (lm *ListMap) Push(key string, values []*resp.Resp) int {
 	channels, ok := lm.listeners[key]
 	if ok {
 		for ; index < len(values) && index < len(channels); index++ {
-			channels[index].Channel <- *values[index]
+			channels[index].Channel <- values[index]
 		}
 		channelsPublished = index
 		lm.listeners[key] = slices.Delete(channels, 0, index)
@@ -47,14 +47,14 @@ func (lm *ListMap) Push(key string, values []*resp.Resp) int {
 	}
 
 	for ; index < len(values); index++ {
-		arr = append(arr, *values[index])
+		arr = append(arr, values[index])
 	}
 
 	lm.lists[key] = arr
 	return len(arr) + channelsPublished
 }
 
-func (lm *ListMap) Prepend(key string, values []*resp.Resp) int {
+func (lm *ListMap) Prepend(key string, values []resp.Resp) int {
 	// Horribly inefficient fix it later by building and merging the slices with preallocations
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()
@@ -63,7 +63,7 @@ func (lm *ListMap) Prepend(key string, values []*resp.Resp) int {
 	channels, ok := lm.listeners[key]
 	if ok {
 		for ; index < len(values) && index < len(channels); index++ {
-			channels[index].Channel <- *values[index]
+			channels[index].Channel <- values[index]
 		}
 		channelsPublished = index
 		lm.listeners[key] = slices.Delete(channels, 0, index)
@@ -76,7 +76,7 @@ func (lm *ListMap) Prepend(key string, values []*resp.Resp) int {
 	}
 
 	for ; index < len(values); index++ {
-		arr = slices.Insert(arr, 0, *values[index])
+		arr = slices.Insert(arr, 0, values[index])
 	}
 
 	lm.lists[key] = arr
@@ -92,7 +92,17 @@ func (lm *ListMap) PopElements(key string, removalCount int) ([]resp.Resp, bool)
 func (lm *ListMap) GetList(key string) ([]resp.Resp, bool) {
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()
-	return lm.getListLocked(key)
+	arr, ok := lm.getListLocked(key)
+	if !ok {
+		return nil, false
+	}
+	return slices.Clone(arr), true
+}
+
+func (lm *ListMap) Len(key string) int {
+	lm.Mu.Lock()
+	defer lm.Mu.Unlock()
+	return len(lm.lists[key])
 }
 
 func (lm *ListMap) Blpop(key string, timeout float64, waiterId int) (resp.Resp, bool) {

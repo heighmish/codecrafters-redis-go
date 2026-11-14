@@ -10,17 +10,19 @@ import (
 	"time"
 )
 
+type DispatchFunction func([]resp.Resp, *storage.Cache, *connContext.Context) []byte
+
 type CommandDispatcher struct {
-	commands map[string]func([]*resp.Resp, *storage.Cache, *connContext.Context) []byte
+	commands map[string]DispatchFunction
 }
 
 func NewCommandDispatcher() *CommandDispatcher {
 	return &CommandDispatcher{
-		commands: make(map[string]func([]*resp.Resp, *storage.Cache, *connContext.Context) []byte),
+		commands: make(map[string]DispatchFunction),
 	}
 }
 
-func (cd *CommandDispatcher) RegisterCommand(command string, f func([]*resp.Resp, *storage.Cache, *connContext.Context) []byte) {
+func (cd *CommandDispatcher) RegisterCommand(command string, f DispatchFunction) {
 	cd.commands[command] = f
 }
 
@@ -36,27 +38,26 @@ func (cd *CommandDispatcher) DispatchCommand(command Command, cache *storage.Cac
 
 type Command struct {
 	Name string
-	Args []*resp.Resp
+	Args []resp.Resp
 }
 
-func NewCommand(arr []*resp.Resp) *Command {
+func NewCommand(arr []resp.Resp) *Command {
 	if len(arr) < 1 {
 		return &Command{
 			Name: "ERR",
-			Args: make([]*resp.Resp, 0),
 		}
 	}
 	return &Command{
-		Name: strings.ToUpper(string(arr[0].Data)),
+		Name: strings.ToUpper(arr[0].Data),
 		Args: arr[1:],
 	}
 }
 
-func Ping(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func Ping(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	return []byte(resp.ToSimpleString("PONG"))
 }
 
-func Echo(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func Echo(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 1 {
 		return []byte("-ERR Usage: ECHO <arg>\r\n")
 	}
@@ -64,7 +65,7 @@ func Echo(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 	return ([]byte(args[0].ToBulkString()))
 }
 
-func Set(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func Set(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 2 {
 		return []byte("-ERR Usage: SET <key> <value>\r\n")
 	}
@@ -79,18 +80,18 @@ func Set(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []by
 				return []byte("-ERR Usage: SET <key> <value> <px> <expiryInMilliseconds>\r\n")
 			}
 			expiryTime := time.Now().UTC().Add(time.Duration(expiry) * time.Millisecond)
-			cache.Container.Add(key, storage.NewValueWithExpiry(*args[1], &expiryTime))
+			cache.Container.Add(key, storage.NewValueWithExpiry(args[1], &expiryTime))
 			fmt.Printf("Adding key %v with expiry time %v\r\n", key, expiryTime)
 			return []byte(resp.ToSimpleString("OK"))
 		}
 	}
-	cache.Container.Add(key, storage.NewValue(*args[1]))
+	cache.Container.Add(key, storage.NewValue(args[1]))
 
 	return []byte(resp.ToSimpleString("OK"))
 
 }
 
-func Get(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func Get(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 1 {
 		return []byte(resp.ToError("Usage: GET <key>"))
 	}
@@ -105,7 +106,7 @@ func Get(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []by
 	return []byte(resp.ToBulkString(val.Data))
 }
 
-func RPUSH(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func RPUSH(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 2 {
 		return []byte(resp.ToError("Usage: RPUSH <list_key> <value_1> <value_...> <value_n>"))
 	}
@@ -115,7 +116,7 @@ func RPUSH(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []
 	return []byte(resp.ToRespInt(length))
 }
 
-func LPUSH(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func LPUSH(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 2 {
 		return []byte(resp.ToError("Usage: LPUSH <list_key> <value_1> <value_...> <value_n>"))
 	}
@@ -139,7 +140,7 @@ func normaliseIndex(val, len int) int {
 	}
 }
 
-func LRANGE(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func LRANGE(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 3 {
 		return []byte(resp.ToError("Usage: LRANGE <list_key> <start_index> <stop_index>"))
 	}
@@ -171,22 +172,16 @@ func LRANGE(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) [
 
 }
 
-func LLEN(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func LLEN(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) != 1 {
 		return []byte(resp.ToError("Usage: LLEN <list_key>"))
 	}
 
 	key := args[0].Data
-
-	arr, ok := cache.Lists.GetList(key)
-	if !ok {
-		return []byte(resp.ToRespInt(0))
-	}
-
-	return []byte(resp.ToRespInt(len(arr)))
+	return []byte(resp.ToRespInt(cache.Lists.Len(key)))
 }
 
-func LPOP(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func LPOP(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) > 2 {
 		return []byte(resp.ToError("Usage: LPOP <list_key>"))
 	}
@@ -214,7 +209,7 @@ func LPOP(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 	return []byte(slice[0].String())
 }
 
-func BLPOP(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func BLPOP(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	// Todo!
 	if len(args) > 2 {
 		return []byte(resp.ToError("Usage: BLPOP <list_key> <timeout>"))
@@ -235,13 +230,13 @@ func BLPOP(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []
 	}
 
 	arr := make([]resp.Resp, 2)
-	arr[0] = *args[0]
+	arr[0] = args[0]
 	arr[1] = val
 
 	return []byte(resp.ToRespArray(arr))
 }
 
-func TYPE(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func TYPE(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) != 1 {
 		return []byte(resp.ToError("Usage: TYPE <key>"))
 	}
@@ -259,7 +254,7 @@ func TYPE(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 	return []byte(resp.ToSimpleString("none"))
 }
 
-func XADD(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+func XADD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
 	if len(args) < 4 {
 		// Todo! generate ids if missing this will break
 		return []byte(resp.ToError("Usage: XADD <stream_key> <entry_id> <key_1> <value_1>"))
