@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"redis-go/app/resp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -142,6 +144,87 @@ func (sm *StreamMap) GetStream(key string) (Stream, bool) {
 	defer sm.mu.Unlock()
 	stream, ok := sm.streams[key]
 	return stream, ok
+}
+
+func parseEntryIdQuery(id string, start bool) (EntryId, error) {
+	time, sequence, found := strings.Cut(id, "-")
+	if !found {
+		timeParsed, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			return EntryId{}, errors.New("Unable to parse start id")
+		}
+		if !start {
+			return EntryId{time: timeParsed, sequenceNumber: math.MaxInt64}, nil
+		}
+		return EntryId{time: timeParsed, sequenceNumber: 0}, nil
+	}
+	timeParsed, err := strconv.ParseInt(time, 10, 64)
+	if err != nil {
+		return EntryId{}, errors.New("Unable to parse start id")
+	}
+
+	sequenceParsed, err := strconv.ParseInt(sequence, 10, 64)
+	if err != nil {
+		return EntryId{}, errors.New("Unable to parse start id")
+	}
+
+	return EntryId{time: timeParsed, sequenceNumber: sequenceParsed}, nil
+}
+
+func (sm *StreamMap) GetRange(key string, start string, end string) (Stream, error) {
+	startId, err := parseEntryIdQuery(start, true)
+	if err != nil {
+		return Stream{}, err
+	}
+
+	endId, err := parseEntryIdQuery(end, false)
+	if err != nil {
+		return Stream{}, err
+	}
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	stream, ok := sm.streams[key]
+	if !ok {
+		return Stream{}, nil
+	}
+	startIdx := stream.binarySearch(startId, func(target, mid EntryId) bool { return mid.Compare(target) < 0 })
+	endIdx := stream.binarySearch(endId, func(target, mid EntryId) bool { return mid.Compare(target) <= 0 })
+	if startIdx >= endIdx {
+		return Stream{}, nil
+	}
+
+	return slices.Clone(stream[startIdx:endIdx]), nil
+}
+
+func (s *Stream) binarySearch(target EntryId, pred func(target, mid EntryId) bool) int {
+	left := -1
+	right := len(*s)
+	for right-left > 1 {
+		mid := left + (right-left)/2
+		if pred(target, (*s)[mid].Id) {
+			left = mid
+		} else {
+			right = mid
+		}
+	}
+	return right
+}
+
+func (s *Stream) EncodeAsResp() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "*%v\r\n", len(*s))
+	for _, entry := range *s {
+		fmt.Fprintf(&sb, "*2\r\n")
+		fmt.Fprintf(&sb, "%s", resp.ToBulkString(entry.Id.String()))
+		fmt.Fprintf(&sb, "*%v\r\n", len(entry.Pairs)*2)
+		for _, pair := range entry.Pairs {
+			fmt.Fprintf(&sb, "%s", resp.ToBulkString(pair.key))
+			fmt.Fprintf(&sb, "%s", resp.ToBulkString(pair.value))
+		}
+	}
+
+	return sb.String()
 }
 
 type Stream []Entry

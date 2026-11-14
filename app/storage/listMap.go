@@ -30,28 +30,17 @@ func (lm *ListMap) Push(key string, values []resp.Resp) int {
 	lm.Mu.Lock()
 	defer lm.Mu.Unlock()
 	index := 0
-	channelsPublished := 0
 	channels, ok := lm.listeners[key]
 	if ok {
 		for ; index < len(values) && index < len(channels); index++ {
 			channels[index].Channel <- values[index]
 		}
-		channelsPublished = index
 		lm.listeners[key] = slices.Delete(channels, 0, index)
 	}
 
-	arr, ok := lm.lists[key]
-	if !ok {
-		fmt.Println("Creating list with key: ", key)
-		arr = make([]resp.Resp, 0)
-	}
-
-	for ; index < len(values); index++ {
-		arr = append(arr, values[index])
-	}
-
+	arr := append(lm.lists[key], values[index:]...)
 	lm.lists[key] = arr
-	return len(arr) + channelsPublished
+	return len(arr) + index
 }
 
 func (lm *ListMap) Prepend(key string, values []resp.Resp) int {

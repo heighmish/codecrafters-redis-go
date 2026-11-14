@@ -269,3 +269,16 @@ func XADD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []by
 
 	return []byte(resp.ToBulkString(id))
 }
+
+func XRANGE(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+	if len(args) != 3 {
+		return []byte(resp.ToError("Usage: XRANGE <stream_key> <start> <end>"))
+	}
+
+	arr, err := cache.Streams.GetRange(args[0].Data, args[1].Data, args[2].Data)
+	if err != nil {
+		return []byte(resp.ToError(err.Error()))
+	}
+
+	return []byte(arr.EncodeAsResp())
+}
