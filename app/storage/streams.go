@@ -32,7 +32,7 @@ func (sm *StreamMap) AddEntry(key string, id string, kvs []*resp.Resp) (string, 
 	if ok && len(stream) > 0 {
 		lastEntry := stream[len(stream)-1].Id
 		if !entryId.IsAfter(lastEntry) {
-			return "", errors.New("New entry must be strictly more recent")
+			return "", errors.New("The ID specified in XADD is equal or smaller than the target stream top item")
 		}
 	}
 
@@ -101,9 +101,17 @@ func NewEntryId(id string) (EntryId, error) {
 		return EntryId{}, fmt.Errorf("Invalid entryId %v", id)
 	}
 
+	if timeParsed < 0 {
+		return EntryId{}, errors.New("The ID specified in XADD must be greater than 0-0")
+	}
+
 	sequenceNumberParsed, err := strconv.ParseInt(sequenceNumber, 10, 64)
 	if err != nil {
 		return EntryId{}, fmt.Errorf("Invalid entryId %v", id)
+	}
+
+	if sequenceNumberParsed < 1 {
+		return EntryId{}, errors.New("The ID specified in XADD must be greater than 0-0")
 	}
 
 	return EntryId{
