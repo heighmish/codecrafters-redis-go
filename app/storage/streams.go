@@ -59,6 +59,13 @@ func (sm *StreamMap) AddEntry(key string, id string, kvs []*resp.Resp) (string, 
 	return entryId.String(), nil
 }
 
+func (sm *StreamMap) GetStream(key string) (Stream, bool) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	stream, ok := sm.streams[key]
+	return stream, ok
+}
+
 type Stream []Entry
 
 type Entry struct {

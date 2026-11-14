@@ -247,10 +247,16 @@ func TYPE(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 	}
 	key := args[0].Data
 	_, ok := cache.Container.Get(key)
-	if !ok {
-		return []byte(resp.ToSimpleString("none"))
+	if ok {
+		return []byte(resp.ToSimpleString("string"))
 	}
-	return []byte(resp.ToSimpleString("string"))
+
+	_, ok = cache.Streams.GetStream(key)
+	if ok {
+		return []byte(resp.ToSimpleString("stream"))
+	}
+
+	return []byte(resp.ToSimpleString("none"))
 }
 
 func XADD(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
