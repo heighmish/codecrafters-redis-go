@@ -47,6 +47,7 @@ func registerCommands(cd *command.CommandDispatcher) {
 	cd.RegisterCommand("LPOP", command.LPOP)
 	cd.RegisterCommand("BLPOP", command.BLPOP)
 	cd.RegisterCommand("TYPE", command.TYPE)
+	cd.RegisterCommand("XADD", command.XADD)
 }
 
 func handleConnection(conn net.Conn, cache *storage.Cache, dispatcher *command.CommandDispatcher, id int) {

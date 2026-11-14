@@ -8,12 +8,14 @@ import (
 type Cache struct {
 	Lists     *ListMap
 	Container *Container
+	Streams   *StreamMap
 }
 
 func NewCache() *Cache {
 	return &Cache{
 		Lists:     NewListMap(),
 		Container: NewContainer(),
+		Streams:   NewStreamMap(),
 	}
 }
 

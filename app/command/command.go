@@ -252,3 +252,19 @@ func TYPE(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 	}
 	return []byte(resp.ToSimpleString("string"))
 }
+
+func XADD(args []*resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+	if len(args) < 4 {
+		// Todo! generate ids if missing this will break
+		return []byte(resp.ToError("Usage: XADD <stream_key> <entry_id> <key_1> <value_1>"))
+	}
+
+	key := args[0].Data
+	id, err := cache.Streams.AddEntry(key, args[1].Data, args[2:])
+	if err != nil {
+		fmt.Println(err)
+		return []byte(resp.ToError(err.Error()))
+	}
+
+	return []byte(resp.ToBulkString(id))
+}
