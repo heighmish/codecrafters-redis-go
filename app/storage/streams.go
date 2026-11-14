@@ -22,18 +22,18 @@ func NewStreamMap() *StreamMap {
 func (sm *StreamMap) AddEntry(key string, id string, kvs []*resp.Resp) (string, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	entryId, err := NewEntryId(id)
-	if err != nil {
-		return "", err
-	}
 
+	var lastEntry *EntryId
 	stream, ok := sm.streams[key]
 	// checking length should be redundant since we cant have an empty stream (or can we?)
 	if ok && len(stream) > 0 {
-		lastEntry := stream[len(stream)-1].Id
-		if !entryId.IsAfter(lastEntry) {
-			return "", errors.New("The ID specified in XADD is equal or smaller than the target stream top item")
-		}
+		lastEntry = &stream[len(stream)-1].Id
+
+	}
+
+	entryId, err := NewEntryId(id, lastEntry)
+	if err != nil {
+		return "", err
 	}
 
 	if len(kvs)%2 != 0 {
@@ -90,8 +90,9 @@ func (id EntryId) IsAfter(other EntryId) bool {
 	return id.Compare(other) > 0
 }
 
-func NewEntryId(id string) (EntryId, error) {
+func NewEntryId(id string, lastEntry *EntryId) (EntryId, error) {
 	time, sequenceNumber, found := strings.Cut(id, "-")
+	newEntry := EntryId{}
 	if !found {
 		return EntryId{}, fmt.Errorf("Invalid entryId %v", id)
 	}
@@ -105,17 +106,35 @@ func NewEntryId(id string) (EntryId, error) {
 		return EntryId{}, errors.New("The ID specified in XADD must be greater than 0-0")
 	}
 
-	sequenceNumberParsed, err := strconv.ParseInt(sequenceNumber, 10, 64)
-	if err != nil {
-		return EntryId{}, fmt.Errorf("Invalid entryId %v", id)
+	newEntry.time = timeParsed
+
+	if sequenceNumber == "*" {
+		var sequenceNumberParsed int64
+		if lastEntry != nil && timeParsed == lastEntry.time {
+			sequenceNumberParsed = lastEntry.sequenceNumber + 1
+		} else {
+			if timeParsed == 0 {
+				sequenceNumberParsed = 1
+			} else {
+				sequenceNumberParsed = 0
+			}
+		}
+		newEntry.sequenceNumber = sequenceNumberParsed
+	} else {
+		sequenceNumberParsed, err := strconv.ParseInt(sequenceNumber, 10, 64)
+		if err != nil {
+			return EntryId{}, fmt.Errorf("Invalid entryId %v", id)
+		}
+
+		if sequenceNumberParsed < 1 {
+			return EntryId{}, errors.New("The ID specified in XADD must be greater than 0-0")
+		}
+		newEntry.sequenceNumber = sequenceNumberParsed
 	}
 
-	if sequenceNumberParsed < 1 {
-		return EntryId{}, errors.New("The ID specified in XADD must be greater than 0-0")
+	if lastEntry != nil && !newEntry.IsAfter(*lastEntry) {
+		return EntryId{}, errors.New("The ID specified in XADD is equal or smaller than the target stream top item")
 	}
 
-	return EntryId{
-		time:           timeParsed,
-		sequenceNumber: sequenceNumberParsed,
-	}, nil
+	return newEntry, nil
 }
