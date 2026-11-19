@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	connContext "redis-go/app/context"
 	"redis-go/app/resp"
@@ -290,14 +291,14 @@ func XREAD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
 
-	streamsArg := slices.IndexFunc(args, func(r resp.Resp) bool { return strings.ToUpper(r.Data) == "STREAMS" })
+	streamsArg := ContainsArg(args, "STREAMS")
 	if streamsArg == -1 {
 		return []byte(resp.ToError("Usage: XREAD <OPTIONS> STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
 
 	blockTimeout := int64(-1)
 	blockIndex := ContainsArg(args, "BLOCK")
-	if blockIndex != -1 && len(args) < blockIndex+1 {
+	if blockIndex != -1 && len(args) > blockIndex+1 {
 		blockInt, err := strconv.ParseInt(args[blockIndex+1].Data, 10, 64)
 		if err != nil {
 			return []byte(resp.ToError("Usage: XREAD <BLOCK> <MILLISECONDS> STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
@@ -305,9 +306,11 @@ func XREAD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 		blockTimeout = blockInt
 	}
 
-	dataArgs := args[streamsArg:]
+	dataArgs := args[streamsArg+1:]
 	pairs := len(dataArgs) / 2
+	fmt.Printf("Stream Index: %v, BlockIndex: %v, blockTimeout: %v, dataArgs: %v\r\n", streamsArg, blockIndex, blockTimeout, dataArgs)
 	if len(dataArgs)%2 != 0 {
+		fmt.Println("Invalid number of args parsed to XREAD, ", pairs)
 		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
 
@@ -315,8 +318,11 @@ func XREAD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 	for i := range pairs {
 		requests = append(requests, streams.RangeRequest{Key: dataArgs[i].Data, Start: dataArgs[i+pairs].Data})
 	}
-	s, err := cache.Streams.GetRanges(requests, blockTimeout)
+	s, err := cache.Streams.GetRanges(requests, blockTimeout, ctx.Id)
 	if err != nil {
+		if errors.Is(err, &streams.TimeoutError{}) {
+			return []byte("*-1\r\n")
+		}
 		return []byte(resp.ToBulkString(err.Error()))
 	}
 

@@ -29,6 +29,12 @@ var (
 	ErrIdTooSmall = errors.New("The ID specified in XADD is equal or smaller than the target stream top item")
 )
 
+type TimeoutError struct{}
+
+func (e *TimeoutError) Error() string {
+	return "Timeout Error Occured"
+}
+
 type RangeRequest struct {
 	Key   string
 	Start string
@@ -148,6 +154,10 @@ func (sm *StreamMap) AddEntry(key string, id string, kvs []resp.Resp) (string, e
 
 	stream.Entries = append(stream.Entries, Entry{Id: entryId, Pairs: pairs})
 	sm.streams[key] = stream
+	for _, l := range sm.streams[key].Listeners.Listeners {
+		fmt.Println("Publishing wake up to: ", l.Id)
+		l.Channel <- resp.Resp{}
+	}
 	return entryId.String(), nil
 }
 
@@ -211,35 +221,102 @@ func (sm *StreamMap) GetRange(key string, start string, end string) (Stream, err
 	return r, err
 }
 
-func (sm *StreamMap) GetRanges(requests []RangeRequest, blockMilliseconds int64) ([]Stream, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
+func (sm *StreamMap) getStreamLocked(key string) Stream {
+	stream, ok := sm.streams[key]
+	if !ok {
+		sm.streams[key] = Stream{}
+	}
+	return stream
+}
+
+func (sm *StreamMap) GetRanges(requests []RangeRequest, blockMilliseconds int64, listenerId int) ([]Stream, error) {
 	streams := make([]Stream, 0, len(requests))
-	for _, request := range requests {
-		stream, ok := sm.streams[request.Key]
-		if !ok {
+	dataRead := false
+	timeout := false
+	for {
+		sm.mu.Lock()
+		for _, request := range requests {
+			stream := sm.getStreamLocked(request.Key)
+
+			startId, err := parseEntryIdQuery(request.Start, true)
+			if err != nil {
+				fmt.Println("Error parsing entryId", request.Start)
+				sm.mu.Unlock()
+				return streams, err
+			}
+			arr, err := stream.getRangeLocked(request.Key, startId, MaxEntryId, true)
+			if err != nil {
+				fmt.Println("Error getting range", request.Key)
+				sm.mu.Unlock()
+				return streams, err
+			}
+			if len(arr.Entries) > 0 {
+				dataRead = true
+				streams = append(streams, arr)
+			}
+		}
+
+		if blockMilliseconds == -1 {
+			// No timeout case
+			fmt.Println("No timeout configured - returning")
+			sm.mu.Unlock()
 			return streams, nil
 		}
 
-		startId, err := parseEntryIdQuery(request.Start, true)
-		if err != nil {
-			return streams, err
+		if dataRead {
+			fmt.Println("Data read in stream - returning")
+			sm.mu.Unlock()
+			return streams, nil
 		}
-		arr, err := stream.getRangeLocked(request.Key, startId, MaxEntryId, true)
-		if err != nil {
-			return streams, err
+
+		c := sm.subscribeLocked(requests, listenerId)
+		sm.mu.Unlock()
+		if blockMilliseconds != 0 {
+			dur := time.Duration(float64(blockMilliseconds) * float64(time.Millisecond))
+			println("Blocking for: ", dur)
+			block := time.After(dur)
+			select {
+			case <-c:
+				println("Received value in channel")
+				timeout = false
+			case <-block:
+				println("Timeout waiting for channel")
+				timeout = true
+			}
 		}
-		streams = append(streams, arr)
+		sm.CleanupListeners(streams, listenerId)
+		if timeout {
+			return streams, &TimeoutError{}
+		}
+	}
+}
+
+func (sm *StreamMap) CleanupListeners(streams []Stream, channelId int) {
+	fmt.Println("Cleaning up listeners for channel: ", channelId)
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	for _, s := range streams {
+		s.Listeners.Listeners = slices.DeleteFunc(s.Listeners.Listeners, func(l listener.Listener) bool { return l.Id == channelId })
+	}
+}
+
+func (sm *StreamMap) subscribeLocked(requests []RangeRequest, channelId int) chan resp.Resp {
+	channel := make(chan resp.Resp, 1)
+	for _, request := range requests {
+		fmt.Printf("Registering channel %v on stream %v\r\n", channelId, request.Key)
+		stream := sm.getStreamLocked(request.Key)
+		stream.Listeners.Listeners = append(stream.Listeners.Listeners, listener.Listener{Channel: channel, Id: channelId})
+		sm.streams[request.Key] = stream
 	}
 
-	return streams, nil
+	return channel
 }
 
 func (s *Stream) getRangeLocked(key string, start, end EntryId, excludeStart bool) (Stream, error) {
 	startIdx := s.binarySearch(start, func(target, mid EntryId) bool { return mid.Compare(target) < 0 })
 	endIdx := s.binarySearch(end, func(target, mid EntryId) bool { return mid.Compare(target) <= 0 })
 
-	if excludeStart && start == s.Entries[startIdx].Id {
+	if excludeStart && startIdx < len(s.Entries) && start == s.Entries[startIdx].Id {
 		startIdx += 1
 	}
 
@@ -298,7 +375,15 @@ func (s *Stream) EncodeAsResp() string {
 type Stream struct {
 	Name      string
 	Entries   []Entry
-	Listeners []listener.Listener
+	Listeners listener.Listeners
+}
+
+func NewStream(key string) *Stream {
+	return &Stream{
+		Name:      key,
+		Entries:   make([]Entry, 0),
+		Listeners: listener.Listeners{},
+	}
 }
 
 type Pair struct {

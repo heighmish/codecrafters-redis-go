@@ -6,3 +6,7 @@ type Listener struct {
 	Channel chan resp.Resp
 	Id      int
 }
+
+type Listeners struct {
+	Listeners []Listener
+}
