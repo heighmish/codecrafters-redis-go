@@ -275,10 +275,27 @@ func XRANGE(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []
 		return []byte(resp.ToError("Usage: XRANGE <stream_key> <start> <end>"))
 	}
 
-	arr, err := cache.Streams.GetRange(args[0].Data, args[1].Data, args[2].Data)
+	arr, err := cache.Streams.GetRange(args[0].Data, args[1].Data, args[2].Data, false)
 	if err != nil {
 		return []byte(resp.ToError(err.Error()))
 	}
 
 	return []byte(arr.EncodeAsResp())
+}
+
+func XREAD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
+	if len(args) != 3 {
+		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key> <entry_id>"))
+	}
+
+	if strings.ToUpper(args[0].Data) != "STREAMS" {
+		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key> <entry_id>"))
+	}
+
+	arr, err := cache.Streams.GetRange(args[1].Data, args[2].Data, "+", true)
+	if err != nil {
+		return []byte(resp.ToError(err.Error()))
+	}
+
+	return []byte(storage.EncodeAsResp([]storage.Stream{arr}))
 }

@@ -40,8 +40,8 @@ func (s Stream) nextId(raw string, now int64) (EntryId, error) {
 		return EntryId{}, err
 	}
 	lastId := EntryId{time: 0, sequenceNumber: 0}
-	if len(s) > 0 {
-		lastId = s[len(s)-1].Id
+	if len(s.Entries) > 0 {
+		lastId = s.Entries[len(s.Entries)-1].Id
 	}
 	id := resolveEntryIdRequest(req, lastId, now)
 	if err := validate(id, lastId); err != nil {
@@ -135,7 +135,8 @@ func (sm *StreamMap) AddEntry(key string, id string, kvs []resp.Resp) (string, e
 		pairs = append(pairs, Pair{key: kvs[i].Data, value: kvs[i+1].Data})
 	}
 
-	sm.streams[key] = append(stream, Entry{Id: entryId, Pairs: pairs})
+	stream.Entries = append(stream.Entries, Entry{Id: entryId, Pairs: pairs})
+	sm.streams[key] = stream
 	return entryId.String(), nil
 }
 
@@ -177,7 +178,7 @@ func parseEntryIdQuery(id string, start bool) (EntryId, error) {
 	return EntryId{time: timeParsed, sequenceNumber: sequenceParsed}, nil
 }
 
-func (sm *StreamMap) GetRange(key string, start string, end string) (Stream, error) {
+func (sm *StreamMap) GetRange(key string, start string, end string, excludeStart bool) (Stream, error) {
 	startId, err := parseEntryIdQuery(start, true)
 	if err != nil {
 		return Stream{}, err
@@ -196,19 +197,27 @@ func (sm *StreamMap) GetRange(key string, start string, end string) (Stream, err
 	}
 	startIdx := stream.binarySearch(startId, func(target, mid EntryId) bool { return mid.Compare(target) < 0 })
 	endIdx := stream.binarySearch(endId, func(target, mid EntryId) bool { return mid.Compare(target) <= 0 })
+
+	if excludeStart && startId == stream.Entries[startIdx].Id {
+		startIdx += 1
+	}
+
 	if startIdx >= endIdx {
 		return Stream{}, nil
 	}
 
-	return slices.Clone(stream[startIdx:endIdx]), nil
+	return Stream{
+		Name:    key,
+		Entries: slices.Clone(stream.Entries[startIdx:endIdx]),
+	}, nil
 }
 
 func (s *Stream) binarySearch(target EntryId, pred func(target, mid EntryId) bool) int {
 	left := -1
-	right := len(*s)
+	right := len(s.Entries)
 	for right-left > 1 {
 		mid := left + (right-left)/2
-		if pred(target, (*s)[mid].Id) {
+		if pred(target, (s.Entries)[mid].Id) {
 			left = mid
 		} else {
 			right = mid
@@ -217,10 +226,21 @@ func (s *Stream) binarySearch(target EntryId, pred func(target, mid EntryId) boo
 	return right
 }
 
+func EncodeAsResp(streams []Stream) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "*%v\r\n", len(streams))
+	for _, stream := range streams {
+		fmt.Fprintf(&sb, "*2\r\n")
+		fmt.Fprintf(&sb, "%s", resp.ToBulkString(stream.Name))
+		fmt.Fprint(&sb, stream.EncodeAsResp())
+	}
+	return sb.String()
+}
+
 func (s *Stream) EncodeAsResp() string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "*%v\r\n", len(*s))
-	for _, entry := range *s {
+	fmt.Fprintf(&sb, "*%v\r\n", len(s.Entries))
+	for _, entry := range s.Entries {
 		fmt.Fprintf(&sb, "*2\r\n")
 		fmt.Fprintf(&sb, "%s", resp.ToBulkString(entry.Id.String()))
 		fmt.Fprintf(&sb, "*%v\r\n", len(entry.Pairs)*2)
@@ -233,7 +253,10 @@ func (s *Stream) EncodeAsResp() string {
 	return sb.String()
 }
 
-type Stream []Entry
+type Stream struct {
+	Name    string
+	Entries []Entry
+}
 
 type Pair struct {
 	key   string
