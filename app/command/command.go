@@ -284,18 +284,32 @@ func XRANGE(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []
 }
 
 func XREAD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []byte {
-	if len(args) != 3 {
-		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key> <entry_id>"))
+	if len(args) < 3 {
+		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
 
 	if strings.ToUpper(args[0].Data) != "STREAMS" {
-		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key> <entry_id>"))
+		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
 
-	arr, err := cache.Streams.GetRange(args[1].Data, args[2].Data, "+", true)
-	if err != nil {
-		return []byte(resp.ToError(err.Error()))
+	dataArgs := args[1:]
+	streamCount := len(dataArgs) / 2
+	if len(dataArgs)%2 != 0 {
+		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
 
-	return []byte(storage.EncodeAsResp([]storage.Stream{arr}))
+	// k1 k2 k3 e1 e2 e3
+	// 0 -> 3
+	// 1 -> 4
+	// 2 -> 5
+	streams := make([]storage.Stream, 0, streamCount)
+	for i := range streamCount {
+		arr, err := cache.Streams.GetRange(dataArgs[i].Data, dataArgs[i+streamCount].Data, "+", true)
+		if err != nil {
+			return []byte(resp.ToError(err.Error()))
+		}
+		streams = append(streams, arr)
+	}
+
+	return []byte(storage.EncodeAsResp(streams))
 }
