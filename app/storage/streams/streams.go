@@ -271,7 +271,9 @@ func (sm *StreamMap) GetRanges(requests []RangeRequest, blockMilliseconds int64,
 
 		c := sm.subscribeLocked(requests, listenerId)
 		sm.mu.Unlock()
-		if blockMilliseconds != 0 {
+		if blockMilliseconds == 0 {
+			<-c
+		} else {
 			dur := time.Duration(float64(blockMilliseconds) * float64(time.Millisecond))
 			println("Blocking for: ", dur)
 			block := time.After(dur)
