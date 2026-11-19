@@ -2,20 +2,21 @@ package storage
 
 import (
 	"redis-go/app/resp"
+	"redis-go/app/storage/streams"
 	"time"
 )
 
 type Cache struct {
 	Lists     *ListMap
 	Container *Container
-	Streams   *StreamMap
+	Streams   *streams.StreamMap
 }
 
 func NewCache() *Cache {
 	return &Cache{
 		Lists:     NewListMap(),
 		Container: NewContainer(),
-		Streams:   NewStreamMap(),
+		Streams:   streams.NewStreamMap(),
 	}
 }
 

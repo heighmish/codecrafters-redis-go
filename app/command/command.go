@@ -5,6 +5,7 @@ import (
 	connContext "redis-go/app/context"
 	"redis-go/app/resp"
 	"redis-go/app/storage"
+	"redis-go/app/storage/streams"
 	"strconv"
 	"strings"
 	"time"
@@ -275,7 +276,7 @@ func XRANGE(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []
 		return []byte(resp.ToError("Usage: XRANGE <stream_key> <start> <end>"))
 	}
 
-	arr, err := cache.Streams.GetRange(args[0].Data, args[1].Data, args[2].Data, false)
+	arr, err := cache.Streams.GetRange(args[0].Data, args[1].Data, args[2].Data)
 	if err != nil {
 		return []byte(resp.ToError(err.Error()))
 	}
@@ -293,7 +294,7 @@ func XREAD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 	}
 
 	dataArgs := args[1:]
-	streamCount := len(dataArgs) / 2
+	pairs := len(dataArgs) / 2
 	if len(dataArgs)%2 != 0 {
 		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
@@ -302,14 +303,14 @@ func XREAD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 	// 0 -> 3
 	// 1 -> 4
 	// 2 -> 5
-	streams := make([]storage.Stream, 0, streamCount)
-	for i := range streamCount {
-		arr, err := cache.Streams.GetRange(dataArgs[i].Data, dataArgs[i+streamCount].Data, "+", true)
-		if err != nil {
-			return []byte(resp.ToError(err.Error()))
-		}
-		streams = append(streams, arr)
+	requests := make([]streams.RangeRequest, 0, pairs)
+	for i := range pairs {
+		requests = append(requests, streams.RangeRequest{Key: dataArgs[i].Data, Start: dataArgs[i+pairs].Data})
+	}
+	s, err := cache.Streams.GetRanges(requests)
+	if err != nil {
+		return []byte(resp.ToBulkString(err.Error()))
 	}
 
-	return []byte(storage.EncodeAsResp(streams))
+	return []byte(streams.EncodeAsResp(s))
 }

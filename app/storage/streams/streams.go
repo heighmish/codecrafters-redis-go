@@ -1,4 +1,4 @@
-package storage
+package streams
 
 import (
 	"cmp"
@@ -26,6 +26,16 @@ var (
 	ErrInvalidId  = errors.New("Invalid stream ID specified as stream command argument")
 	ErrZeroId     = errors.New("The ID specified in XADD must be greater than 0-0")
 	ErrIdTooSmall = errors.New("The ID specified in XADD is equal or smaller than the target stream top item")
+)
+
+type RangeRequest struct {
+	Key   string
+	Start string
+}
+
+var (
+	MinEntryId = EntryId{time: 0, sequenceNumber: 0}
+	MaxEntryId = EntryId{time: math.MaxInt64, sequenceNumber: math.MaxInt64}
 )
 
 type entryIdRequest struct {
@@ -149,10 +159,10 @@ func (sm *StreamMap) GetStream(key string) (Stream, bool) {
 
 func parseEntryIdQuery(id string, start bool) (EntryId, error) {
 	if id == "-" {
-		return EntryId{time: 0, sequenceNumber: 0}, nil
+		return MinEntryId, nil
 	}
 	if id == "+" {
-		return EntryId{time: math.MaxInt64, sequenceNumber: math.MaxInt64}, nil
+		return MaxEntryId, nil
 	}
 	time, sequence, found := strings.Cut(id, "-")
 	if !found {
@@ -178,7 +188,7 @@ func parseEntryIdQuery(id string, start bool) (EntryId, error) {
 	return EntryId{time: timeParsed, sequenceNumber: sequenceParsed}, nil
 }
 
-func (sm *StreamMap) GetRange(key string, start string, end string, excludeStart bool) (Stream, error) {
+func (sm *StreamMap) GetRange(key string, start string, end string) (Stream, error) {
 	startId, err := parseEntryIdQuery(start, true)
 	if err != nil {
 		return Stream{}, err
@@ -195,10 +205,40 @@ func (sm *StreamMap) GetRange(key string, start string, end string, excludeStart
 	if !ok {
 		return Stream{}, nil
 	}
-	startIdx := stream.binarySearch(startId, func(target, mid EntryId) bool { return mid.Compare(target) < 0 })
-	endIdx := stream.binarySearch(endId, func(target, mid EntryId) bool { return mid.Compare(target) <= 0 })
 
-	if excludeStart && startId == stream.Entries[startIdx].Id {
+	r, err := stream.getRangeLocked(key, startId, endId, false)
+	return r, err
+}
+
+func (sm *StreamMap) GetRanges(requests []RangeRequest) ([]Stream, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	streams := make([]Stream, 0, len(requests))
+	for _, request := range requests {
+		stream, ok := sm.streams[request.Key]
+		if !ok {
+			return streams, nil
+		}
+
+		startId, err := parseEntryIdQuery(request.Start, true)
+		if err != nil {
+			return streams, err
+		}
+		arr, err := stream.getRangeLocked(request.Key, startId, MaxEntryId, true)
+		if err != nil {
+			return streams, err
+		}
+		streams = append(streams, arr)
+	}
+
+	return streams, nil
+}
+
+func (s *Stream) getRangeLocked(key string, start, end EntryId, excludeStart bool) (Stream, error) {
+	startIdx := s.binarySearch(start, func(target, mid EntryId) bool { return mid.Compare(target) < 0 })
+	endIdx := s.binarySearch(end, func(target, mid EntryId) bool { return mid.Compare(target) <= 0 })
+
+	if excludeStart && start == s.Entries[startIdx].Id {
 		startIdx += 1
 	}
 
@@ -208,8 +248,9 @@ func (sm *StreamMap) GetRange(key string, start string, end string, excludeStart
 
 	return Stream{
 		Name:    key,
-		Entries: slices.Clone(stream.Entries[startIdx:endIdx]),
+		Entries: slices.Clone(s.Entries[startIdx:endIdx]),
 	}, nil
+
 }
 
 func (s *Stream) binarySearch(target EntryId, pred func(target, mid EntryId) bool) int {
