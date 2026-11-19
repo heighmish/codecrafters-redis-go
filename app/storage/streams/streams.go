@@ -235,18 +235,25 @@ func (sm *StreamMap) GetRanges(requests []RangeRequest, blockMilliseconds int64,
 	timeout := false
 	for {
 		sm.mu.Lock()
-		for _, request := range requests {
-			stream := sm.getStreamLocked(request.Key)
+		for i := range requests {
+			stream := sm.getStreamLocked(requests[i].Key)
 
-			startId, err := parseEntryIdQuery(request.Start, true)
+			if requests[i].Start == "$" {
+				if len(stream.Entries) > 0 {
+					requests[i].Start = stream.Entries[len(stream.Entries)-1].Id.String()
+				} else {
+					requests[i].Start = MinEntryId.String()
+				}
+			}
+			startId, err := parseEntryIdQuery(requests[i].Start, true)
 			if err != nil {
-				fmt.Println("Error parsing entryId", request.Start)
+				fmt.Println("Error parsing entryId", requests[i].Start)
 				sm.mu.Unlock()
 				return streams, err
 			}
-			arr, err := stream.getRangeLocked(request.Key, startId, MaxEntryId, true)
+			arr, err := stream.getRangeLocked(requests[i].Key, startId, MaxEntryId, true)
 			if err != nil {
-				fmt.Println("Error getting range", request.Key)
+				fmt.Println("Error getting range", requests[i].Key)
 				sm.mu.Unlock()
 				return streams, err
 			}
