@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"redis-go/app/resp"
+	"redis-go/app/storage/listener"
 	"slices"
 	"strconv"
 	"strings"
@@ -210,7 +211,7 @@ func (sm *StreamMap) GetRange(key string, start string, end string) (Stream, err
 	return r, err
 }
 
-func (sm *StreamMap) GetRanges(requests []RangeRequest) ([]Stream, error) {
+func (sm *StreamMap) GetRanges(requests []RangeRequest, blockMilliseconds int64) ([]Stream, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	streams := make([]Stream, 0, len(requests))
@@ -295,8 +296,9 @@ func (s *Stream) EncodeAsResp() string {
 }
 
 type Stream struct {
-	Name    string
-	Entries []Entry
+	Name      string
+	Entries   []Entry
+	Listeners []listener.Listener
 }
 
 type Pair struct {

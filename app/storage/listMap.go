@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"redis-go/app/resp"
+	"redis-go/app/storage/listener"
 	"slices"
 	"sync"
 	"time"
@@ -11,18 +12,13 @@ import (
 type ListMap struct {
 	Mu        sync.Mutex
 	lists     map[string][]resp.Resp
-	listeners map[string][]Listener
-}
-
-type Listener struct {
-	Channel chan resp.Resp
-	Id      int
+	listeners map[string][]listener.Listener
 }
 
 func NewListMap() *ListMap {
 	return &ListMap{
 		lists:     make(map[string][]resp.Resp),
-		listeners: make(map[string][]Listener),
+		listeners: make(map[string][]listener.Listener),
 	}
 }
 
@@ -105,17 +101,17 @@ func (lm *ListMap) Blpop(key string, timeout float64, waiterId int) (resp.Resp, 
 	c := make(chan resp.Resp, 1)
 	// Todo - track goroutines set of listeners and clean up when they leave
 	// Todo - i guess add an object tracking thread local state into commandDispatcher state
-	listener := Listener{
+	l := listener.Listener{
 		Channel: c,
 		Id:      waiterId,
 	}
 	listeners, ok := lm.listeners[key]
 	if !ok {
-		arr := make([]Listener, 1)
-		arr[0] = listener
+		arr := make([]listener.Listener, 1)
+		arr[0] = l
 		lm.listeners[key] = arr
 	} else {
-		lm.listeners[key] = append(listeners, listener)
+		lm.listeners[key] = append(listeners, l)
 	}
 
 	// Channel created, unlock and wait for new client to add an element
@@ -145,7 +141,7 @@ func (lm *ListMap) CleanUpListeners(key string, waiterId int) {
 		return
 	}
 
-	lm.listeners[key] = slices.DeleteFunc(listeners, func(l Listener) bool { return l.Id == waiterId })
+	lm.listeners[key] = slices.DeleteFunc(listeners, func(l listener.Listener) bool { return l.Id == waiterId })
 }
 
 func (lm *ListMap) popElementsLocked(key string, removalCount int) ([]resp.Resp, bool) {

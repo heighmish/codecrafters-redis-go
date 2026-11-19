@@ -6,6 +6,7 @@ import (
 	"redis-go/app/resp"
 	"redis-go/app/storage"
 	"redis-go/app/storage/streams"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -289,28 +290,39 @@ func XREAD(args []resp.Resp, cache *storage.Cache, ctx *connContext.Context) []b
 		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
 
-	if strings.ToUpper(args[0].Data) != "STREAMS" {
-		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
+	streamsArg := slices.IndexFunc(args, func(r resp.Resp) bool { return strings.ToUpper(r.Data) == "STREAMS" })
+	if streamsArg == -1 {
+		return []byte(resp.ToError("Usage: XREAD <OPTIONS> STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
 
-	dataArgs := args[1:]
+	blockTimeout := int64(-1)
+	blockIndex := ContainsArg(args, "BLOCK")
+	if blockIndex != -1 && len(args) < blockIndex+1 {
+		blockInt, err := strconv.ParseInt(args[blockIndex+1].Data, 10, 64)
+		if err != nil {
+			return []byte(resp.ToError("Usage: XREAD <BLOCK> <MILLISECONDS> STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
+		}
+		blockTimeout = blockInt
+	}
+
+	dataArgs := args[streamsArg:]
 	pairs := len(dataArgs) / 2
 	if len(dataArgs)%2 != 0 {
 		return []byte(resp.ToError("Usage: XREAD STREAMS <stream_key1> <stream_key2> <entry_id1> <entry_id2>"))
 	}
 
-	// k1 k2 k3 e1 e2 e3
-	// 0 -> 3
-	// 1 -> 4
-	// 2 -> 5
 	requests := make([]streams.RangeRequest, 0, pairs)
 	for i := range pairs {
 		requests = append(requests, streams.RangeRequest{Key: dataArgs[i].Data, Start: dataArgs[i+pairs].Data})
 	}
-	s, err := cache.Streams.GetRanges(requests)
+	s, err := cache.Streams.GetRanges(requests, blockTimeout)
 	if err != nil {
 		return []byte(resp.ToBulkString(err.Error()))
 	}
 
 	return []byte(streams.EncodeAsResp(s))
+}
+
+func ContainsArg(resps []resp.Resp, opt string) int {
+	return slices.IndexFunc(resps, func(r resp.Resp) bool { return strings.ToUpper(r.Data) == opt })
 }
